@@ -53,9 +53,9 @@ func InitDeviceProducer() {
 
 func NewKafkaSyncProducer(brokers []string) sarama.SyncProducer { // 프로듀서 초기화
 	config := sarama.NewConfig()
-	config.Producer.RequiredAcks = sarama.WaitForAll // 모든 ISR에 ack 받을 때까지 대기
-	config.Producer.Retry.Max = 5                    // 재시도 횟수
-	config.Producer.Return.Successes = true          // 성공 결과 수신 설정
+	config.Producer.RequiredAcks = sarama.WaitForAll
+	config.Producer.Retry.Max = 5
+	config.Producer.Return.Successes = true
 
 	producer, err := sarama.NewSyncProducer(brokers, config)
 	if err != nil {
