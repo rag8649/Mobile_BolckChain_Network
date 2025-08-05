@@ -19,6 +19,8 @@ func BroadcastLightTx(msg types.LightTxMessage) (string, error) {
 			msg.Original.DeviceID,
 			msg.Original.Timestamp,
 			fmt.Sprintf("%.2f", msg.Original.TotalEnergy),
+			strconv.FormatFloat(msg.Original.Location.Latitude, 'f', -1, 64),
+			strconv.FormatFloat(msg.Original.Location.Longitude, 'f', -1, 64),
 			msg.Hash,
 			msg.Signature,
 			msg.Pubkey,
