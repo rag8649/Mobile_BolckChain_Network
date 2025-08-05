@@ -24,7 +24,7 @@ func CmdSendLightTx() *cobra.Command {
 
 			var payload interface{}
 
-			if len(args) == 6 {
+			if len(args) == 8 {
 				// SolarData 전송
 				totalEnergy, err := strconv.ParseFloat(args[2], 64)
 				if err != nil {

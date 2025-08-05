@@ -1,6 +1,7 @@
 package config
 
 var (
+	FullnodeID = "node_A"
 	// Kafka 브로커 IP 및 포트
 	KafkaBrokers = []string{"192.168.0.132:10000"}
 

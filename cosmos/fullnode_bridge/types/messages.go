@@ -42,6 +42,7 @@ type RECMeta struct {
 type DeviceToAddressMessage struct {
 	DeviceID string `json:"device_id"`
 	Address  string `json:"address"`
+	SenderID string `json:"sender_id"`
 }
 
 type AuthMessage struct {

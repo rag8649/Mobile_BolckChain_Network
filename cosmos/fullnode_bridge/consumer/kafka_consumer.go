@@ -50,8 +50,9 @@ type Location struct { // 오라클에 전달하는 위치 값
 }
 
 type LocationOutputMessage struct { // 오라클로부터 받는 결과값
-	Hash   string `json:"hash"`
-	Output string `json:"output"`
+	Hash     string `json:"hash"`
+	Output   string `json:"output"`
+	SenderID string `json:"sender_id"`
 }
 
 type VoteMemberMsg struct {
@@ -122,7 +123,7 @@ func (h *lightTxHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 
 			// 위도/경도가 모두 0이 아니어야 전송
 			if location.Latitude != 0 && location.Longitude != 0 {
-				sendLocationToKafka(txMsg.Hash, location)
+				sendLocationToKafka(txMsg.Hash, location, config.FullnodeID)
 				SentLatLng[txMsg.Hash] = true
 			} else {
 				fmt.Println("⚠️ 위도/경도 정보 없음 또는 0, Kafka 전송 생략:", txMsg.Hash)
@@ -177,10 +178,11 @@ func PubKeyToAddress(pubKeyBytes []byte) (string, error) { // 주소 변환 함�
 }
 
 // 위치 정보 -> 오라클 전송
-func sendLocationToKafka(hash string, loc Location) {
+func sendLocationToKafka(hash string, loc Location, senderID string) {
 	payload := map[string]interface{}{
-		"hash":     hash,
-		"location": loc,
+		"hash":      hash,
+		"location":  loc,
+		"sender_id": senderID,
 	}
 	msgBytes, _ := json.Marshal(payload)
 
@@ -287,6 +289,7 @@ func VoteEvaluator() { // 투표 수집 반복 함수
 func requestDeviceAddress(producer sarama.SyncProducer, deviceId string) error { // 주소 요청 함수
 	msg := types.DeviceToAddressMessage{
 		DeviceID: deviceId,
+		SenderID: config.FullnodeID,
 	}
 	bytes, err := json.Marshal(msg)
 	if err != nil {
@@ -303,110 +306,105 @@ func requestDeviceAddress(producer sarama.SyncProducer, deviceId string) error {
 
 var deviceAddressMap = sync.Map{} // deviceId → address
 
-func StartDeviceAddressConsumer() { // 주소 수신 함수
-	consumerGroup, err := sarama.NewConsumerGroup(config.KafkaBrokers, config.TopicDeviceToAddressGroup, nil)
+func StartDeviceAddressConsumer() {
+	brokers := config.KafkaBrokers
+	topic := config.TopicDeviceToAddress
+	partition := int32(0)
+
+	cfg := sarama.NewConfig()
+	cfg.Version = sarama.V2_1_0_0
+
+	consumer, err := sarama.NewConsumer(brokers, cfg)
 	if err != nil {
-		panic(fmt.Sprintf("DeviceAddressConsumerGroup 생성 실패: %v", err))
+		panic(fmt.Sprintf("[Kafka: DeviceAddress] Consumer 생성 실패: %v", err))
 	}
-	fmt.Println("[Kafka: Device to Address] Kafka Consumer Group 수신 대기 중...")
+
+	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetNewest)
+	if err != nil {
+		panic(fmt.Sprintf("[Kafka: DeviceAddress] 파티션 구독 실패: %v", err))
+	}
+
+	fmt.Println("[Kafka: DeviceAddress] Consumer 수신 대기 중...")
+
 	go func() {
-		for {
-			err := consumerGroup.Consume(context.Background(), []string{config.TopicDeviceToAddress}, &deviceAddressHandler{})
-			if err != nil {
-				fmt.Printf("DeviceAddress Consume 오류: %v\n", err)
+		for msg := range partitionConsumer.Messages() {
+			fmt.Printf("[Kafka: DeviceAddress] 메시지 수신 (offset=%d, partition=%d): %s\n",
+				msg.Offset, msg.Partition, string(msg.Value))
+
+			var response types.DeviceToAddressMessage
+			if err := json.Unmarshal(msg.Value, &response); err != nil {
+				fmt.Printf("[Kafka: DeviceAddress] JSON 파싱 실패: %v\n", err)
+				continue
 			}
+
+			// 내 노드가 보낸 메시지만 처리
+			if response.SenderID != config.FullnodeID {
+				continue // 다른 노드의 응답 → 무시
+			}
+
+			if response.DeviceID == "" {
+				fmt.Printf("⚠️ [Kafka: DeviceAddress] device_id 없음. 무시됨: %v\n", response)
+				continue
+			}
+			if response.Address == "" {
+				fmt.Printf("⚠️ [Kafka: DeviceAddress] address 비어 있음. device_id=%s\n", response.DeviceID)
+			}
+
+			// 중복 확인
+			if val, ok := deviceAddressMap.Load(response.DeviceID); ok {
+				fmt.Printf("[Kafka: DeviceAddress] 기존 값 덮어씀: %s → %s (기존=%s)\n",
+					response.DeviceID, response.Address, val.(string))
+			} else {
+				fmt.Printf("[Kafka: DeviceAddress] 저장됨: %s → %s\n", response.DeviceID, response.Address)
+			}
+
+			deviceAddressMap.Store(response.DeviceID, response.Address)
 		}
 	}()
-}
-
-type deviceAddressHandler struct{}
-
-func (h *deviceAddressHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
-func (h *deviceAddressHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
-func (h *deviceAddressHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	for msg := range claim.Messages() {
-		fmt.Printf("[Kafka: DeviceAddress] 메시지 수신 (offset=%d, partition=%d): %s\n",
-			msg.Offset, msg.Partition, string(msg.Value))
-
-		var response types.DeviceToAddressMessage
-		if err := json.Unmarshal(msg.Value, &response); err != nil {
-			fmt.Printf("[Kafka: DeviceAddress] JSON 파싱 실패: %v\n", err)
-			continue
-		}
-
-		if response.DeviceID == "" {
-			fmt.Printf("⚠️ [Kafka: DeviceAddress] device_id 없음. 무시됨: %v\n", response)
-			continue
-		}
-
-		if response.Address == "" {
-			fmt.Printf("⚠️ [Kafka: DeviceAddress] address 비어 있음. device_id=%s\n", response.DeviceID)
-		}
-
-		// 중복 확인
-		if val, ok := deviceAddressMap.Load(response.DeviceID); ok {
-			fmt.Printf("[Kafka: DeviceAddress] 기존 값 덮어씀: %s → %s (기존=%s)\n",
-				response.DeviceID, response.Address, val.(string))
-		} else {
-			fmt.Printf("[Kafka: DeviceAddress] 저장됨: %s → %s\n", response.DeviceID, response.Address)
-		}
-
-		deviceAddressMap.Store(response.DeviceID, response.Address)
-		session.MarkMessage(msg, "")
-	}
-	return nil
-}
-
-type oracleOutputHandler struct{}
-
-func (h *oracleOutputHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
-func (h *oracleOutputHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
-
-func (h *oracleOutputHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
-	for msg := range claim.Messages() {
-		fmt.Println("[Kafka: Location] 수신된 메시지:", string(msg.Value))
-
-		var outputMsg LocationOutputMessage
-		if err := json.Unmarshal(msg.Value, &outputMsg); err != nil {
-			fmt.Println("[Kafka: Location] 메시지 파싱 실패:", err)
-			continue
-		}
-
-		// 👉 여기서 outputMsg.Hash, outputMsg.Output 사용 가능
-		fmt.Printf("[Kafka: Location] 해시: %s, 결과: %s\n", outputMsg.Hash, outputMsg.Output)
-
-		// TODO: 처리 로직 작성 (예: VoteMap에 저장하거나 평가 루틴 호출 등)
-
-		session.MarkMessage(msg, "")
-	}
-	return nil
 }
 
 func StartLocationOutputConsumer() {
 	brokers := config.KafkaBrokers
 	topic := config.TopicLocationResult
-	groupID := config.TopicLocationGroup
+	partition := int32(0)
 
 	cfg := sarama.NewConfig()
 	cfg.Version = sarama.V2_1_0_0
-	cfg.Consumer.Return.Errors = true
-	cfg.Consumer.Offsets.Initial = sarama.OffsetNewest
 
-	consumerGroup, err := sarama.NewConsumerGroup(brokers, groupID, cfg)
+	// ✅ 단일 Consumer 생성 (ConsumerGroup ❌)
+	consumer, err := sarama.NewConsumer(brokers, cfg)
 	if err != nil {
-		panic(fmt.Sprintf("[Kafka: Location] Output ConsumerGroup 생성 실패: %v", err))
+		panic(fmt.Sprintf("[Kafka: Location] 단일 Consumer 생성 실패: %v", err))
 	}
 
+	// ✅ 파티션 직접 구독
+	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetNewest)
+	if err != nil {
+		panic(fmt.Sprintf("[Kafka: Location] 파티션 구독 실패: %v", err))
+	}
+
+	// ✅ 메시지 수신 루프
 	go func() {
-		for {
-			err := consumerGroup.Consume(context.Background(), []string{topic}, &oracleOutputHandler{})
-			if err != nil {
-				fmt.Printf("[Kafka: Location] Kafka Consume 오류: %v\n", err)
+		fmt.Println("[Kafka: Location] 응답 수신 대기 중...")
+		for msg := range partitionConsumer.Messages() {
+			fmt.Println("[Kafka: Location] 수신된 메시지:", string(msg.Value))
+
+			var outputMsg LocationOutputMessage
+			if err := json.Unmarshal(msg.Value, &outputMsg); err != nil {
+				fmt.Println("[Kafka: Location] 메시지 파싱 실패:", err)
+				continue
 			}
+
+			// ⚠️ 필터링: 내 노드가 보낸 메시지인지 확인 (선택적으로 추가)
+			if outputMsg.SenderID != config.FullnodeID {
+				continue // 내 응답 아님, 무시
+			}
+
+			// ✅ 처리 로직
+			fmt.Printf("[Kafka: Location] 해시: %s, 결과: %s\n", outputMsg.Hash, outputMsg.Output)
+
 		}
 	}()
-
-	fmt.Println("[Kafka: Location] 응답 수신 대기 중...")
 }
 
 func StartSolarKafkaConsumer() {
