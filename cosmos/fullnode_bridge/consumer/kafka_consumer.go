@@ -41,7 +41,8 @@ var (
 	VoteMemberCount int // 데이터베이스 멤버 수 기록 변수
 )
 
-var SentLatLng = make(map[string]bool)      // 중복 전송 방지용
+var SentLatLng = make(map[string]bool) // 중복 전송 방지용
+var RewardWeight = make(map[string]float64)
 var KafkaProducerLatLng sarama.SyncProducer // 위도경도 전송용 프로듀서
 
 type Location struct { // 오라클에 전달하는 위치 값
@@ -50,9 +51,9 @@ type Location struct { // 오라클에 전달하는 위치 값
 }
 
 type LocationOutputMessage struct { // 오라클로부터 받는 결과값
-	Hash     string `json:"hash"`
-	Output   string `json:"output"`
-	SenderID string `json:"sender_id"`
+	Hash     string  `json:"hash"`
+	Output   float64 `json:"output"`
+	SenderID string  `json:"sender_id"`
 }
 
 type VoteMemberMsg struct {
@@ -258,7 +259,7 @@ func VoteEvaluator() { // 투표 수집 반복 함수
 
 							if txMsg.Original != nil {
 								// 🌞 SolarData 기반 보상
-								tx.SendRewardTx(userAddress, txMsg.Original.TotalEnergy)
+								tx.SendRewardTx(userAddress, txMsg.Original.TotalEnergy+txMsg.Original.TotalEnergy*RewardWeight[txMsg.Hash])
 							} else if txMsg.REC != nil {
 								// REC 기반 보상: 측정량 MWh를 float64로 변환 후 보상
 								mwhStr := txMsg.REC.MeasuredVolumeMWh
@@ -276,6 +277,8 @@ func VoteEvaluator() { // 투표 수집 반복 함수
 					}
 
 					delete(VoteMap, hash)
+					SentLatLng[hash] = false
+					RewardWeight[hash] = 1
 					fmt.Printf("[Kafka: Solar data] [%s] voteMap에서 제거됨\n", hash)
 				} else {
 					fmt.Printf("[Kafka: Solar data] 고유 주소 없음. 트랜잭션 전송 안 함\n")
@@ -397,11 +400,13 @@ func StartLocationOutputConsumer() {
 
 			// ⚠️ 필터링: 내 노드가 보낸 메시지인지 확인 (선택적으로 추가)
 			if outputMsg.SenderID != config.FullnodeID {
+				fmt.Printf("[Kafka: Location] id: %s\n", outputMsg.SenderID)
 				continue // 내 응답 아님, 무시
 			}
 
+			RewardWeight[outputMsg.Hash] = outputMsg.Output
 			// ✅ 처리 로직
-			fmt.Printf("[Kafka: Location] 해시: %s, 결과: %s\n", outputMsg.Hash, outputMsg.Output)
+			fmt.Printf("[Kafka: Location] 해시: %s, 보상 가중치: %f\n", outputMsg.Hash, RewardWeight[outputMsg.Hash])
 
 		}
 	}()
