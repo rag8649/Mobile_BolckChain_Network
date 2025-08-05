@@ -53,7 +53,7 @@ func BroadcastLightTx(msg types.LightTxMessage) (string, error) {
 	// 공통 플래그 추가
 	args = append(args,
 		"--from", "alice",
-		"--home", "/root/cosmos/cosmos-sdk/private/.simapp",
+		"--home", "/root/Mobile_BolckChain_Network/cosmos/private/.simapp",
 		"--chain-id", "learning-chain-1",
 		"--keyring-backend", "test",
 		"--broadcast-mode", "block",
@@ -62,7 +62,7 @@ func BroadcastLightTx(msg types.LightTxMessage) (string, error) {
 		"--output", "json",
 	)
 
-	cmd := exec.Command("/root/cosmos/cosmos-sdk/build/simd", args...)
+	cmd := exec.Command("/root/Mobile_BolckChain_Network/cosmos/build/simd", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("simd error: %v\noutput: %s", err, string(output))
@@ -81,11 +81,11 @@ func BroadcastLightTx(msg types.LightTxMessage) (string, error) {
 // SendStakeToAddress.go
 func SendStakeToAddress(toAddr string) (string, error) {
 	// 예시 CLI 호출
-	cmd := exec.Command("/root/cosmos/cosmos-sdk/build/simd", "tx", "bank", "send",
+	cmd := exec.Command("/root/Mobile_BolckChain_Network/cosmos/build/simd", "tx", "bank", "send",
 		"alice", toAddr, "1stake",
 		"--fees", "0.01stake",
 		"--chain-id", "learning-chain-1",
-		"--home", "/root/cosmos/cosmos-sdk/private/.simapp",
+		"--home", "/root/Mobile_BolckChain_Network/cosmos/private/.simapp",
 		"--yes", "--keyring-backend", "test", "--broadcast-mode", "sync")
 
 	out, err := cmd.CombinedOutput()
@@ -94,9 +94,9 @@ func SendStakeToAddress(toAddr string) (string, error) {
 
 func QueryBalance(address string) (string, error) {
 	// simd CLI를 통한 잔고 조회
-	cmd := exec.Command("/root/cosmos/cosmos-sdk/build/simd", "query", "bank", "balances", address,
+	cmd := exec.Command("/root/Mobile_BolckChain_Network/cosmos/build/simd", "query", "bank", "balances", address,
 		"--node", "tcp://localhost:26657", // RPC 노드 주소 (필요 시 수정 가능)
-		"--home", "/root/cosmos/cosmos-sdk/private/.simapp",
+		"--home", "/root/Mobile_BolckChain_Network/cosmos/private/.simapp",
 		"--output", "json")
 
 	out, err := cmd.CombinedOutput()
@@ -119,11 +119,11 @@ func SendRewardTx(toAddr string, power float64) (string, error) {
 	fmt.Printf("Kafka: [reward] 보상 트랜잭션 준비 중: 주소=%s, 발전량=%.2f → 지급액=%dstake\n", toAddr, power, amount)
 
 	// 트랜잭션 실행 명령
-	cmd := exec.Command("/root/cosmos/cosmos-sdk/build/simd", "tx", "reward", "reward-solar-power",
+	cmd := exec.Command("/root/Mobile_BolckChain_Network/cosmos/build/simd", "tx", "reward", "reward-solar-power",
 		toAddr, amountStr,
 		"--from", "alice",
 		"--chain-id", "learning-chain-1",
-		"--home", "/root/cosmos/cosmos-sdk/private/.simapp",
+		"--home", "/root/Mobile_BolckChain_Network/cosmos/private/.simapp",
 		"--gas", "auto",
 		"--yes",
 		"--keyring-backend", "test",

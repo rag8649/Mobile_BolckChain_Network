@@ -11,7 +11,7 @@ option (gogoproto.goproto_getters_all) = false;
 // 위치 정보
 message Location {
   double latitude   = 1;
-  double longitutde = 2;
+  double longitude = 2;
 }
 
 // 발전량 데이터

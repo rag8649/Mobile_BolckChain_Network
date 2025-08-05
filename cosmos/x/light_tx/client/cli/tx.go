@@ -46,8 +46,8 @@ func CmdSendLightTx() *cobra.Command {
 						Timestamp:   args[1],
 						TotalEnergy: totalEnergy,
 						Location: &lighttype.Location{
-							Latitude:   lat,
-							Longitutde: lon,
+							Latitude:  lat,
+							Longitude: lon,
 						},
 					},
 				}

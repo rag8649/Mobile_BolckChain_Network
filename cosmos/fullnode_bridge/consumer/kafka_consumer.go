@@ -41,6 +41,19 @@ var (
 	VoteMemberCount int // 데이터베이스 멤버 수 기록 변수
 )
 
+var SentLatLng = make(map[string]bool)      // 중복 전송 방지용
+var KafkaProducerLatLng sarama.SyncProducer // 위도경도 전송용 프로듀서
+
+type Location struct { // 오라클에 전달하는 위치 값
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+type LocationOutputMessage struct { // 오라클로부터 받는 결과값
+	Hash   string `json:"hash"`
+	Output string `json:"output"`
+}
+
 type VoteMemberMsg struct {
 	Count int `json:"count"`
 }
@@ -49,6 +62,7 @@ var KafkaProducerDevice sarama.SyncProducer // 디바이스 정보 전송 프로
 
 func InitDeviceProducer() {
 	KafkaProducerDevice = NewKafkaSyncProducer(config.KafkaBrokers)
+	KafkaProducerLatLng = NewKafkaSyncProducer(config.KafkaBrokers)
 }
 
 func NewKafkaSyncProducer(brokers []string) sarama.SyncProducer { // 프로듀서 초기화
@@ -96,6 +110,25 @@ func (h *lightTxHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 			fmt.Println("[Kafka: Solar data] 주소 생성 실패:", err)
 			continue
 		}
+
+		if !SentLatLng[txMsg.Hash] {
+			var location Location
+			if txMsg.Original != nil {
+				location = Location{
+					Latitude:  txMsg.Original.Location.Latitude,
+					Longitude: txMsg.Original.Location.Longitude,
+				}
+			}
+
+			// 위도/경도가 모두 0이 아니어야 전송
+			if location.Latitude != 0 && location.Longitude != 0 {
+				sendLocationToKafka(txMsg.Hash, location)
+				SentLatLng[txMsg.Hash] = true
+			} else {
+				fmt.Println("⚠️ 위도/경도 정보 없음 또는 0, Kafka 전송 생략:", txMsg.Hash)
+			}
+		}
+
 		VoteMutex.Lock()
 		VoteMap[txMsg.Hash] = append(VoteMap[txMsg.Hash], SignatureEntry{
 			TxMsg:     txMsg,
@@ -143,8 +176,26 @@ func PubKeyToAddress(pubKeyBytes []byte) (string, error) { // 주소 변환 함�
 	return address, nil
 }
 
-func StartVoteEvaluator() { // 투표 수집 반복 함수
-	fmt.Println("[Kafka: Solar data] StartVoteEvaluator 시작됨")
+// 위치 정보 -> 오라클 전송
+func sendLocationToKafka(hash string, loc Location) {
+	payload := map[string]interface{}{
+		"hash":     hash,
+		"location": loc,
+	}
+	msgBytes, _ := json.Marshal(payload)
+
+	_, _, err := KafkaProducerLatLng.SendMessage(&sarama.ProducerMessage{
+		Topic: config.TopicLocationProducer,
+		Value: sarama.ByteEncoder(msgBytes),
+	})
+	if err != nil {
+		fmt.Println("[Kafka: Solar data] Location Kafka 전송 실패:", err)
+	} else {
+		fmt.Println("[Kafka: Solar data] Location Kafka 전송 성공:", string(msgBytes))
+	}
+}
+
+func VoteEvaluator() { // 투표 수집 반복 함수
 
 	ticker := time.NewTicker(10 * time.Second)
 	go func() {
@@ -306,6 +357,58 @@ func (h *deviceAddressHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 	return nil
 }
 
+type oracleOutputHandler struct{}
+
+func (h *oracleOutputHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
+func (h *oracleOutputHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil }
+
+func (h *oracleOutputHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	for msg := range claim.Messages() {
+		fmt.Println("[Kafka: Location] 수신된 메시지:", string(msg.Value))
+
+		var outputMsg LocationOutputMessage
+		if err := json.Unmarshal(msg.Value, &outputMsg); err != nil {
+			fmt.Println("[Kafka: Location] 메시지 파싱 실패:", err)
+			continue
+		}
+
+		// 👉 여기서 outputMsg.Hash, outputMsg.Output 사용 가능
+		fmt.Printf("[Kafka: Location] 해시: %s, 결과: %s\n", outputMsg.Hash, outputMsg.Output)
+
+		// TODO: 처리 로직 작성 (예: VoteMap에 저장하거나 평가 루틴 호출 등)
+
+		session.MarkMessage(msg, "")
+	}
+	return nil
+}
+
+func StartLocationOutputConsumer() {
+	brokers := config.KafkaBrokers
+	topic := config.TopicLocationResult
+	groupID := config.TopicLocationGroup
+
+	cfg := sarama.NewConfig()
+	cfg.Version = sarama.V2_1_0_0
+	cfg.Consumer.Return.Errors = true
+	cfg.Consumer.Offsets.Initial = sarama.OffsetNewest
+
+	consumerGroup, err := sarama.NewConsumerGroup(brokers, groupID, cfg)
+	if err != nil {
+		panic(fmt.Sprintf("[Kafka: Location] Output ConsumerGroup 생성 실패: %v", err))
+	}
+
+	go func() {
+		for {
+			err := consumerGroup.Consume(context.Background(), []string{topic}, &oracleOutputHandler{})
+			if err != nil {
+				fmt.Printf("[Kafka: Location] Kafka Consume 오류: %v\n", err)
+			}
+		}
+	}()
+
+	fmt.Println("[Kafka: Location] 응답 수신 대기 중...")
+}
+
 func StartSolarKafkaConsumer() {
 	brokers := config.KafkaBrokers
 	topic := config.TopicLightTx
@@ -332,70 +435,13 @@ func StartSolarKafkaConsumer() {
 	}()
 
 	fmt.Println("[Kafka: Solar data] Kafka Consumer Group 수신 대기 중...")
-	StartVoteEvaluator() // 참여자 수집 + 평가 루틴 시작
+	VoteEvaluator() // 참여자 수집 + 평가 루틴 시작
 }
 
-func StartVoteMemberConsumer() {
-	fmt.Println("[Kafka: Users] StartVoteMemberConsumer 시작됨")
-
-	brokers := config.KafkaBrokers
-	topic := config.TopicVoteMember
-	partition := int32(0)
-
-	saramaConfig := sarama.NewConfig()
-	saramaConfig.Version = sarama.V2_1_0_0
-
-	// 1. 메시지 요청을 먼저 전송
-	go func() {
-		err := sendInitialRequest(brokers, config.TopicRequestMemberCount)
-		if err != nil {
-			fmt.Printf("[Kafka: Users] 초기 요청 전송 실패: %v\n", err)
-		} else {
-			fmt.Println("[Kafka: Users] 초기 VoteMemberCount 요청 전송 완료")
-		}
-	}()
-
-	// 2. 컨슈머 초기화
-	consumer, err := sarama.NewConsumer(brokers, saramaConfig)
-	if err != nil {
-		panic(fmt.Sprintf("[Kafka: Users] Consumer 생성 실패: %v", err))
-	}
-
-	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetNewest)
-	if err != nil {
-		panic(fmt.Sprintf("[Kafka: Users] 파티션 구독 실패: %v", err))
-	}
-
-	go func() {
-		fmt.Println("[Kafka: Users] Kafka Partition Consumer 수신 대기 중...")
-		for msg := range partitionConsumer.Messages() {
-			fmt.Printf("[Kafka: Users] 수신 메시지: %s\n", string(msg.Value))
-
-			var parsed VoteMemberMsg
-			if err := json.Unmarshal(msg.Value, &parsed); err != nil {
-				fmt.Printf("[Kafka: Users] JSON 파싱 오류: %v\n", err)
-				continue
-			}
-
-			VoteMemberCount = parsed.Count
-			fmt.Printf("[Kafka: Users] VoteMemberCount 갱신됨: %d\n", VoteMemberCount)
-		}
-	}()
-}
-
-func sendInitialRequest(brokers []string, topic string) error {
-	producer, err := sarama.NewSyncProducer(brokers, nil)
-	if err != nil {
-		return fmt.Errorf("Kafka 프로듀서 생성 실패: %w", err)
-	}
-	defer producer.Close()
-
-	// 메시지 내용이 없어도 OK. 수신자(오라클)는 topic만 보면 됨
-	msg := &sarama.ProducerMessage{
-		Topic: topic,
-		Value: sarama.StringEncoder(`{"request": "latest_vote_count"}`),
-	}
-
-	_, _, err = producer.SendMessage(msg)
-	return err
+func StartConsumer() {
+	go StartSolarKafkaConsumer()     // 태양광 발전량 토픽
+	go StartAccountConsumer()        // 회원가입 요청 토픽
+	go StartVoteMemberConsumer()     // 회원 수 토픽
+	go StartDeviceAddressConsumer()  // 디바이스 id, 주소 매핑 토픽
+	go StartLocationOutputConsumer() // 위치 정보 토픽
 }

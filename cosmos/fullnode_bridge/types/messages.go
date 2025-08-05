@@ -8,8 +8,8 @@ type SolarData struct {
 }
 
 type Location struct {
-	Latitude   float64 `json:"latitude"`
-	Longitutde float64 `json:"longitutde"`
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
 }
 
 type LightTxMessage struct {

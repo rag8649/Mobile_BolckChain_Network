@@ -30,7 +30,7 @@ func (k msgServer) SendLightTx(goCtx context.Context, msg *lighttype.MsgSendLigh
 			"timestamp", data.Timestamp,
 			"total_energy", data.TotalEnergy,
 			"latitude", data.Location.Latitude,
-			"longitude", data.Location.Longitutde,
+			"longitude", data.Location.Longitude,
 			"hash", msg.Hash,
 			"signature", msg.Signature,
 			"pubkey", msg.Pubkey,
