@@ -247,9 +247,9 @@ func VoteEvaluator() { // 투표 수집 반복 함수
 						if err := requestDeviceAddress(KafkaProducerDevice, deviceId); err != nil {
 							fmt.Println("주소 요청 실패:", err)
 						} else {
-							// 일정 시간 대기 (최대 1초)
+							// 일정 시간 대기 (최대 5초)
 							var userAddress string
-							for i := 0; i < 20; i++ {
+							for i := 0; i < 50; i++ {
 								if val, ok := deviceAddressMap.Load(deviceId); ok {
 									userAddress = val.(string)
 									break
@@ -259,6 +259,7 @@ func VoteEvaluator() { // 투표 수집 반복 함수
 
 							if txMsg.Original != nil {
 								// 🌞 SolarData 기반 보상
+								fmt.Printf("[Kafka: reward] SendRewardTx 호출 전: energy=%.2f, weight=%.2f, user=%s\n", txMsg.Original.TotalEnergy, RewardWeight[txMsg.Hash], userAddress)
 								tx.SendRewardTx(userAddress, txMsg.Original.TotalEnergy+txMsg.Original.TotalEnergy*RewardWeight[txMsg.Hash])
 							} else if txMsg.REC != nil {
 								// REC 기반 보상: 측정량 MWh를 float64로 변환 후 보상
@@ -278,7 +279,7 @@ func VoteEvaluator() { // 투표 수집 반복 함수
 
 					delete(VoteMap, hash)
 					SentLatLng[hash] = false
-					RewardWeight[hash] = 1
+					RewardWeight[hash] = 0
 					fmt.Printf("[Kafka: Solar data] [%s] voteMap에서 제거됨\n", hash)
 				} else {
 					fmt.Printf("[Kafka: Solar data] 고유 주소 없음. 트랜잭션 전송 안 함\n")
@@ -369,18 +370,16 @@ func StartDeviceAddressConsumer() {
 func StartLocationOutputConsumer() {
 	brokers := config.KafkaBrokers
 	topic := config.TopicLocationResult
-	partition := int32(0)
+	partition := int32(0) // 토픽 파티션 고정 "result-location-topic"
 
 	cfg := sarama.NewConfig()
 	cfg.Version = sarama.V2_1_0_0
 
-	// ✅ 단일 Consumer 생성 (ConsumerGroup ❌)
 	consumer, err := sarama.NewConsumer(brokers, cfg)
 	if err != nil {
 		panic(fmt.Sprintf("[Kafka: Location] 단일 Consumer 생성 실패: %v", err))
 	}
 
-	// ✅ 파티션 직접 구독
 	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetNewest)
 	if err != nil {
 		panic(fmt.Sprintf("[Kafka: Location] 파티션 구독 실패: %v", err))
@@ -443,8 +442,9 @@ func StartSolarKafkaConsumer() {
 
 func StartConsumer() {
 	go StartSolarKafkaConsumer()     // 태양광 발전량 토픽
-	go StartAccountConsumer()        // 회원가입 요청 토픽
+	go StartLocationOutputConsumer() // 위치 정보 토픽
 	go StartVoteMemberConsumer()     // 회원 수 토픽
 	go StartDeviceAddressConsumer()  // 디바이스 id, 주소 매핑 토픽
-	go StartLocationOutputConsumer() // 위치 정보 토픽
+
+	go StartAccountConsumer() // 회원가입 요청 토픽
 }
