@@ -50,15 +50,6 @@ func (k Keeper) GetAllWhitelisted(ctx sdk.Context) []string {
 }
 
 // ✅ InitGenesis 구현
-func (k Keeper) InitGenesis(ctx sdk.Context, data types.GenesisState) {
-	for _, addr := range data.WhitelistedAddrs {
-		sdkAddr, err := sdk.AccAddressFromBech32(addr)
-		if err != nil {
-			panic(err)
-		}
-		k.SetWhitelisted(ctx, sdkAddr)
-	}
-}
 
 // ✅ ExportGenesis 구현
 func (k Keeper) ExportGenesis(ctx sdk.Context) types.GenesisState {
