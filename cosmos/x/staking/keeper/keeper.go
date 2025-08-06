@@ -7,6 +7,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	institutionkeeper "github.com/cosmos/cosmos-sdk/x/institution/keeper"
 	paramtypes "github.com/cosmos/cosmos-sdk/x/params/types"
 	"github.com/cosmos/cosmos-sdk/x/staking/types"
 )
@@ -25,12 +26,14 @@ type Keeper struct {
 	bankKeeper types.BankKeeper
 	hooks      types.StakingHooks
 	paramstore paramtypes.Subspace
+
+	institutionKeeper institutionkeeper.Keeper
 }
 
 // NewKeeper creates a new staking Keeper instance
 func NewKeeper(
 	cdc codec.BinaryCodec, key sdk.StoreKey, ak types.AccountKeeper, bk types.BankKeeper,
-	ps paramtypes.Subspace,
+	ps paramtypes.Subspace, ik institutionkeeper.Keeper,
 ) Keeper {
 	// set KeyTable if it has not already been set
 	if !ps.HasKeyTable() {
@@ -47,12 +50,13 @@ func NewKeeper(
 	}
 
 	return Keeper{
-		storeKey:   key,
-		cdc:        cdc,
-		authKeeper: ak,
-		bankKeeper: bk,
-		paramstore: ps,
-		hooks:      nil,
+		storeKey:          key,
+		cdc:               cdc,
+		authKeeper:        ak,
+		bankKeeper:        bk,
+		paramstore:        ps,
+		hooks:             nil,
+		institutionKeeper: ik,
 	}
 }
 

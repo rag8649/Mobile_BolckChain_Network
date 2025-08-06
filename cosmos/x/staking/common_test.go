@@ -47,6 +47,7 @@ func getBaseSimappWithCustomKeeper() (*codec.LegacyAmino, *simapp.SimApp, sdk.Co
 		app.AccountKeeper,
 		app.BankKeeper,
 		app.GetSubspace(types.ModuleName),
+		app.InstitutionKeeper,
 	)
 	app.StakingKeeper.SetParams(ctx, types.DefaultParams())
 

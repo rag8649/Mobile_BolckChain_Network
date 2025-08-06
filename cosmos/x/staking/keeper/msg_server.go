@@ -11,11 +11,13 @@ import (
 	"github.com/cosmos/cosmos-sdk/telemetry"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	institutionkeeper "github.com/cosmos/cosmos-sdk/x/institution/keeper"
 	"github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
 type msgServer struct {
 	Keeper
+	institutionKeeper institutionkeeper.Keeper
 }
 
 // NewMsgServerImpl returns an implementation of the bank MsgServer interface
@@ -30,36 +32,53 @@ var _ types.MsgServer = msgServer{}
 func (k msgServer) CreateValidator(goCtx context.Context, msg *types.MsgCreateValidator) (*types.MsgCreateValidatorResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	valAddr, err := sdk.ValAddressFromBech32(msg.ValidatorAddress)
+	// ✅ [1] Convert DelegatorAddress to sdk.AccAddress
+	delegatorAddr, err := sdk.AccAddressFromBech32(msg.DelegatorAddress)
 	if err != nil {
-		return nil, err
+		return nil, sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid delegator address: %s", err)
 	}
 
-	// check to see if the pubkey or sender has been registered before
+	// ✅ [2] Check whitelist
+	if !k.institutionKeeper.IsWhitelisted(ctx, delegatorAddr) {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrUnauthorized, "address is not an authorized institution")
+	}
+
+	// ✅ [3] Validate ValidatorAddress
+	valAddr, err := sdk.ValAddressFromBech32(msg.ValidatorAddress)
+	if err != nil {
+		return nil, sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid validator address: %s", err)
+	}
+
+	// Check for existing validator by operator address
 	if _, found := k.GetValidator(ctx, valAddr); found {
 		return nil, types.ErrValidatorOwnerExists
 	}
 
+	// Check for existing validator by consensus pubkey
 	pk, ok := msg.Pubkey.GetCachedValue().(cryptotypes.PubKey)
 	if !ok {
-		return nil, sdkerrors.Wrapf(sdkerrors.ErrInvalidType, "Expecting cryptotypes.PubKey, got %T", pk)
+		return nil, sdkerrors.Wrapf(sdkerrors.ErrInvalidType, "Expecting cryptotypes.PubKey, got %T", msg.Pubkey)
 	}
-
 	if _, found := k.GetValidatorByConsAddr(ctx, sdk.GetConsAddress(pk)); found {
 		return nil, types.ErrValidatorPubKeyExists
 	}
 
+	// Check bond denomination
 	bondDenom := k.BondDenom(ctx)
 	if msg.Value.Denom != bondDenom {
 		return nil, sdkerrors.Wrapf(
-			sdkerrors.ErrInvalidRequest, "invalid coin denomination: got %s, expected %s", msg.Value.Denom, bondDenom,
+			sdkerrors.ErrInvalidRequest,
+			"invalid coin denomination: got %s, expected %s",
+			msg.Value.Denom, bondDenom,
 		)
 	}
 
+	// Check description length
 	if _, err := msg.Description.EnsureLength(); err != nil {
 		return nil, err
 	}
 
+	// Validate pubkey type against consensus params
 	cp := ctx.ConsensusParams()
 	if cp != nil && cp.Validator != nil {
 		if !tmstrings.StringInSlice(pk.Type(), cp.Validator.PubKeyTypes) {
@@ -70,10 +89,12 @@ func (k msgServer) CreateValidator(goCtx context.Context, msg *types.MsgCreateVa
 		}
 	}
 
+	// ✅ [4] Create Validator
 	validator, err := types.NewValidator(valAddr, pk, msg.Description)
 	if err != nil {
 		return nil, err
 	}
+
 	commission := types.NewCommissionWithTime(
 		msg.Commission.Rate, msg.Commission.MaxRate,
 		msg.Commission.MaxChangeRate, ctx.BlockHeader().Time,
@@ -84,28 +105,22 @@ func (k msgServer) CreateValidator(goCtx context.Context, msg *types.MsgCreateVa
 		return nil, err
 	}
 
-	delegatorAddress, err := sdk.AccAddressFromBech32(msg.DelegatorAddress)
-	if err != nil {
-		return nil, err
-	}
-
 	validator.MinSelfDelegation = msg.MinSelfDelegation
 
 	k.SetValidator(ctx, validator)
 	k.SetValidatorByConsAddr(ctx, validator)
 	k.SetNewValidatorByPowerIndex(ctx, validator)
 
-	// call the after-creation hook
+	// AfterValidatorCreated hook
 	k.AfterValidatorCreated(ctx, validator.GetOperator())
 
-	// move coins from the msg.Address account to a (self-delegation) delegator account
-	// the validator account and global shares are updated within here
-	// NOTE source will always be from a wallet which are unbonded
-	_, err = k.Keeper.Delegate(ctx, delegatorAddress, msg.Value.Amount, types.Unbonded, validator, true)
+	// ✅ [5] Delegate (self-bond)
+	_, err = k.Keeper.Delegate(ctx, delegatorAddr, msg.Value.Amount, types.Unbonded, validator, true)
 	if err != nil {
 		return nil, err
 	}
 
+	// ✅ [6] Emit Events
 	ctx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeCreateValidator,
@@ -120,69 +135,6 @@ func (k msgServer) CreateValidator(goCtx context.Context, msg *types.MsgCreateVa
 	})
 
 	return &types.MsgCreateValidatorResponse{}, nil
-}
-
-// EditValidator defines a method for editing an existing validator
-func (k msgServer) EditValidator(goCtx context.Context, msg *types.MsgEditValidator) (*types.MsgEditValidatorResponse, error) {
-	ctx := sdk.UnwrapSDKContext(goCtx)
-	valAddr, err := sdk.ValAddressFromBech32(msg.ValidatorAddress)
-	if err != nil {
-		return nil, err
-	}
-	// validator must already be registered
-	validator, found := k.GetValidator(ctx, valAddr)
-	if !found {
-		return nil, types.ErrNoValidatorFound
-	}
-
-	// replace all editable fields (clients should autofill existing values)
-	description, err := validator.Description.UpdateDescription(msg.Description)
-	if err != nil {
-		return nil, err
-	}
-
-	validator.Description = description
-
-	if msg.CommissionRate != nil {
-		commission, err := k.UpdateValidatorCommission(ctx, validator, *msg.CommissionRate)
-		if err != nil {
-			return nil, err
-		}
-
-		// call the before-modification hook since we're about to update the commission
-		k.BeforeValidatorModified(ctx, valAddr)
-
-		validator.Commission = commission
-	}
-
-	if msg.MinSelfDelegation != nil {
-		if !msg.MinSelfDelegation.GT(validator.MinSelfDelegation) {
-			return nil, types.ErrMinSelfDelegationDecreased
-		}
-
-		if msg.MinSelfDelegation.GT(validator.Tokens) {
-			return nil, types.ErrSelfDelegationBelowMinimum
-		}
-
-		validator.MinSelfDelegation = (*msg.MinSelfDelegation)
-	}
-
-	k.SetValidator(ctx, validator)
-
-	ctx.EventManager().EmitEvents(sdk.Events{
-		sdk.NewEvent(
-			types.EventTypeEditValidator,
-			sdk.NewAttribute(types.AttributeKeyCommissionRate, validator.Commission.String()),
-			sdk.NewAttribute(types.AttributeKeyMinSelfDelegation, validator.MinSelfDelegation.String()),
-		),
-		sdk.NewEvent(
-			sdk.EventTypeMessage,
-			sdk.NewAttribute(sdk.AttributeKeyModule, types.AttributeValueCategory),
-			sdk.NewAttribute(sdk.AttributeKeySender, msg.ValidatorAddress),
-		),
-	})
-
-	return &types.MsgEditValidatorResponse{}, nil
 }
 
 // Delegate defines a method for performing a delegation of coins from a delegator to a validator
@@ -371,4 +323,63 @@ func (k msgServer) Undelegate(goCtx context.Context, msg *types.MsgUndelegate) (
 	return &types.MsgUndelegateResponse{
 		CompletionTime: completionTime,
 	}, nil
+}
+
+// EditValidator implements the MsgServer interface.
+func (k msgServer) EditValidator(goCtx context.Context, msg *types.MsgEditValidator) (*types.MsgEditValidatorResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	valAddr, err := sdk.ValAddressFromBech32(msg.ValidatorAddress)
+	if err != nil {
+		return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidAddress, err.Error())
+	}
+
+	validator, found := k.GetValidator(ctx, valAddr)
+	if !found {
+		return nil, types.ErrNoValidatorFound
+	}
+
+	// update description
+	updatedDesc, err := validator.Description.UpdateDescription(msg.Description)
+	if err != nil {
+		return nil, err
+	}
+	validator.Description = updatedDesc
+	// update commission rate
+	if msg.CommissionRate != nil {
+		newRate := *msg.CommissionRate
+		blockTime := ctx.BlockHeader().Time
+
+		err := validator.Commission.ValidateNewRate(newRate, blockTime)
+		if err != nil {
+			return nil, err
+		}
+
+		validator.Commission.Rate = newRate
+		validator.Commission.UpdateTime = blockTime
+	}
+
+	// update min self-delegation
+	if msg.MinSelfDelegation != nil {
+		if msg.MinSelfDelegation.LT(sdk.OneInt()) {
+			return nil, sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "minimum self delegation must be a positive integer")
+		}
+		validator.MinSelfDelegation = *msg.MinSelfDelegation
+	}
+
+	k.SetValidator(ctx, validator)
+
+	ctx.EventManager().EmitEvents(sdk.Events{
+		sdk.NewEvent(
+			types.EventTypeEditValidator,
+			sdk.NewAttribute(types.AttributeKeyValidator, msg.ValidatorAddress),
+		),
+		sdk.NewEvent(
+			sdk.EventTypeMessage,
+			sdk.NewAttribute(sdk.AttributeKeyModule, types.AttributeValueCategory),
+			sdk.NewAttribute(sdk.AttributeKeySender, msg.ValidatorAddress),
+		),
+	})
+
+	return &types.MsgEditValidatorResponse{}, nil
 }

@@ -104,6 +104,12 @@ import (
 	rewardkeeper "github.com/cosmos/cosmos-sdk/x/reward/keeper"
 	rewardtypes "github.com/cosmos/cosmos-sdk/x/reward/types"
 
+	// institution
+
+	institutionmodule "github.com/cosmos/cosmos-sdk/x/institution"
+	institutionkeeper "github.com/cosmos/cosmos-sdk/x/institution/keeper"
+	institutiontypes "github.com/cosmos/cosmos-sdk/x/institution/types"
+
 	// unnamed import of statik for swagger UI support
 	_ "github.com/cosmos/cosmos-sdk/client/docs/statik"
 )
@@ -146,6 +152,9 @@ var (
 		mappingmodule.AppModuleBasic{},
 		//reward
 		rewardmodule.AppModuleBasic{},
+
+		// institution
+		institutionmodule.AppModuleBasic{},
 	)
 
 	// module account permissions
@@ -215,6 +224,9 @@ type SimApp struct {
 
 	//reward
 	RewardKeeper rewardkeeper.Keeper
+
+	//institution
+	InstitutionKeeper institutionkeeper.Keeper
 }
 
 func init() {
@@ -252,6 +264,7 @@ func NewSimApp(
 		lighttxtypes.ModuleName,
 		mappingtypes.StoreKey,
 		rewardtypes.StoreKey,
+		institutiontypes.StoreKey,
 	)
 
 	tkeys := sdk.NewTransientStoreKeys(paramstypes.TStoreKey)
@@ -276,6 +289,13 @@ func NewSimApp(
 
 	app.ParamsKeeper = initParamsKeeper(appCodec, legacyAmino, keys[paramstypes.StoreKey], tkeys[paramstypes.TStoreKey])
 
+	// Institution
+	app.InstitutionKeeper = institutionkeeper.NewKeeper(
+		appCodec,
+		keys[institutiontypes.StoreKey],
+		app.AccountKeeper,
+	)
+
 	//mymodule
 	app.MymoduleKeeper = mymodulekeeper.NewKeeper(keys[mymoduletypes.StoreKey])
 
@@ -299,7 +319,7 @@ func NewSimApp(
 	app.RewardKeeper = rewardkeeper.NewKeeper(appCodec, keys[rewardtypes.StoreKey], app.BankKeeper, app.AccountKeeper)
 
 	stakingKeeper := stakingkeeper.NewKeeper(
-		appCodec, keys[stakingtypes.StoreKey], app.AccountKeeper, app.BankKeeper, app.GetSubspace(stakingtypes.ModuleName),
+		appCodec, keys[stakingtypes.StoreKey], app.AccountKeeper, app.BankKeeper, app.GetSubspace(stakingtypes.ModuleName), app.InstitutionKeeper, // ✅ 추가: whitelist 검증용 keeper
 	)
 	app.MintKeeper = mintkeeper.NewKeeper(
 		appCodec, keys[minttypes.StoreKey], app.GetSubspace(minttypes.ModuleName), &stakingKeeper,
@@ -324,7 +344,7 @@ func NewSimApp(
 	app.StakingKeeper = *stakingKeeper.SetHooks(
 		stakingtypes.NewMultiStakingHooks(app.DistrKeeper.Hooks(), app.SlashingKeeper.Hooks()),
 	)
-
+	// Keeper 생성
 	app.AuthzKeeper = authzkeeper.NewKeeper(keys[authzkeeper.StoreKey], appCodec, app.BaseApp.MsgServiceRouter())
 
 	// register the proposal types
@@ -390,6 +410,7 @@ func NewSimApp(
 		evidence.NewAppModule(app.EvidenceKeeper),
 		params.NewAppModule(app.ParamsKeeper),
 		authzmodule.NewAppModule(appCodec, app.AuthzKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
+		institutionmodule.NewAppModule(appCodec, app.InstitutionKeeper),
 	)
 
 	// During begin block slashing happens after distr.BeginBlocker so that
@@ -408,6 +429,7 @@ func NewSimApp(
 		lighttxtypes.ModuleName,
 		mappingtypes.ModuleName,
 		rewardtypes.ModuleName,
+		institutiontypes.ModuleName,
 	)
 	app.mm.SetOrderEndBlockers(
 		crisistypes.ModuleName, govtypes.ModuleName, stakingtypes.ModuleName,
@@ -421,6 +443,7 @@ func NewSimApp(
 		lighttxtypes.ModuleName,
 		mappingtypes.ModuleName,
 		rewardtypes.ModuleName,
+		institutiontypes.ModuleName,
 	)
 
 	// NOTE: The genutils module must occur after staking so that pools are
@@ -439,6 +462,7 @@ func NewSimApp(
 		lighttxtypes.ModuleName,
 		mappingtypes.ModuleName,
 		rewardtypes.ModuleName,
+		institutiontypes.ModuleName,
 	)
 
 	// Uncomment if you want to set a custom migration order here.

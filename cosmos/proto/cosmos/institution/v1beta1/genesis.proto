@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package cosmos.institution.v1beta1;
+
+option go_package = "github.com/cosmos/cosmos-sdk/x/institution/types";
+
+// GenesisState defines the institution module's genesis state.
+message GenesisState {
+  repeated string whitelisted_addrs = 1;
+}
