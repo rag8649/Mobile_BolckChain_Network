@@ -85,7 +85,7 @@ func SendStakeToAddress(toAddr string) (string, error) {
 	// 예시 CLI 호출
 	cmd := exec.Command("/root/Mobile_BolckChain_Network/cosmos/build/simd", "tx", "bank", "send",
 		"alice", toAddr, "1stake",
-		"--fees", "0.01stake",
+		"--gas", "auto",
 		"--chain-id", "learning-chain-1",
 		"--home", "/root/Mobile_BolckChain_Network/cosmos/private/.simapp",
 		"--yes", "--keyring-backend", "test", "--broadcast-mode", "sync")

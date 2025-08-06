@@ -46,5 +46,6 @@ type DeviceToAddressMessage struct {
 }
 
 type AuthMessage struct {
+	NodeID  string `json:"node_id"`
 	Address string `json:"user_address"`
 }

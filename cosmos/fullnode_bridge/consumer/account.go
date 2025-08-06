@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/cosmos/cosmos-sdk/fullnode_bridge/tx"
 	"github.com/cosmos/cosmos-sdk/fullnode_bridge/types"
@@ -22,6 +23,7 @@ type accountHandler struct {
 
 // 응답 메시지 구조체 정의
 type BalanceResult struct {
+	NodeID  string          `json:"node_id"`
 	Address string          `json:"address"`
 	Result  json.RawMessage `json:"result"`
 }
@@ -47,6 +49,9 @@ func (h *accountHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 		}
 		fmt.Println("[Kafka: Account] 송금 성공")
 
+		// ⏱️ 블록 생성 대기 (최대 10초)
+		time.Sleep(10 * time.Second)
+
 		// 잔고 조회
 		balanceJSON, err := tx.QueryBalance(authMsg.Address)
 		if err != nil {
@@ -55,11 +60,42 @@ func (h *accountHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 		}
 		fmt.Println("[Kafka: Account] 잔고 확인 결과:", balanceJSON)
 
-		// 결과 메시지 포맷: {"address": "...", "result": {...}}
-		response := BalanceResult{
-			Address: authMsg.Address,
-			Result:  json.RawMessage(balanceJSON), // 잔고 JSON을 그대로 포함
+		// 🔍 JSON에서 balance만 추출
+		var balanceResult struct {
+			Balances []struct {
+				Denom  string `json:"denom"`
+				Amount string `json:"amount"`
+			} `json:"balances"`
 		}
+		if err := json.Unmarshal([]byte(balanceJSON), &balanceResult); err != nil {
+			fmt.Println("[Kafka: Account] 잔고 JSON 파싱 실패:", err)
+			continue
+		}
+
+		// 필요한 잔액(예: stake)만 추출
+		var stakeAmount string
+		for _, b := range balanceResult.Balances {
+			if b.Denom == "stake" {
+				stakeAmount = b.Amount
+				break
+			}
+		}
+
+		if stakeAmount == "" {
+			stakeAmount = "0"
+		}
+
+		// 🔁 결과 메시지 (잔액만 포함)
+		response := struct {
+			NodeID  string `json:"node_id"`
+			Address string `json:"address"`
+			Balance string `json:"balance"`
+		}{
+			NodeID:  authMsg.NodeID,
+			Address: authMsg.Address,
+			Balance: stakeAmount,
+		}
+
 		encoded, err := json.Marshal(response)
 		if err != nil {
 			fmt.Println("[Kafka: Account] 결과 메시지 인코딩 실패:", err)
@@ -76,7 +112,7 @@ func (h *accountHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 		if err != nil {
 			fmt.Println("[Kafka: Account] 결과 메시지 전송 실패:", err)
 		} else {
-			fmt.Println("[Kafka: Account] 결과 메시지 전송 완료")
+			fmt.Println("[Kafka: Account] 결과 메시지 전송 완료:", string(encoded))
 		}
 
 		session.MarkMessage(msg, "")
