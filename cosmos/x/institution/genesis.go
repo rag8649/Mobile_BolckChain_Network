@@ -80,6 +80,7 @@ func InitGenesis(
 		}
 	}
 }
+
 func ExportGenesis(ctx sdk.Context, k institutionkeeper.Keeper) *types.GenesisState {
 	return &types.GenesisState{
 		WhitelistedAddrs: k.GetAllWhitelisted(ctx),
