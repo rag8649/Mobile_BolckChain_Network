@@ -8,8 +8,10 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	"github.com/cosmos/cosmos-sdk/x/institution/keeper"
 	"github.com/cosmos/cosmos-sdk/x/institution/types"
+	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	"github.com/gorilla/mux"
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/spf13/cobra"
@@ -22,16 +24,20 @@ func (AppModuleBasic) Name() string {
 	return types.ModuleName
 }
 
-func NewAppModule(cdc codec.Codec, k keeper.Keeper) AppModule {
+func NewAppModule(cdc codec.Codec, k keeper.Keeper, sk stakingkeeper.Keeper, bankKeeper bankkeeper.Keeper) AppModule {
 	return AppModule{
-		cdc:    cdc,
-		keeper: k,
+		cdc:           cdc,
+		keeper:        k,
+		stakingKeeper: sk,
+		bankKeeper:    bankKeeper,
 	}
 }
 
 type AppModule struct {
-	cdc    codec.Codec
-	keeper keeper.Keeper
+	cdc           codec.Codec
+	keeper        keeper.Keeper
+	stakingKeeper stakingkeeper.Keeper
+	bankKeeper    bankkeeper.Keeper
 }
 
 func (am AppModule) Name() string { return types.ModuleName }
@@ -53,9 +59,12 @@ func (am AppModule) ValidateGenesis(cdc codec.JSONCodec, _ client.TxEncodingConf
 }
 
 func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, bz json.RawMessage) []abci.ValidatorUpdate {
-	var genesis types.GenesisState
-	cdc.MustUnmarshalJSON(bz, &genesis)
-	am.keeper.InitGenesis(ctx, genesis)
+	var genesisState types.GenesisState
+	cdc.MustUnmarshalJSON(bz, &genesisState)
+
+	// bankKeeper 추가
+	InitGenesis(ctx, am.keeper, am.stakingKeeper, am.bankKeeper, genesisState)
+
 	return []abci.ValidatorUpdate{}
 }
 

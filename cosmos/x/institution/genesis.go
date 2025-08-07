@@ -3,11 +3,10 @@ package institution
 import (
 	"fmt"
 
-	"encoding/base64"
-
-	sdked25519 "github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
+	cryptosecp256k1 "github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
 	institutionkeeper "github.com/cosmos/cosmos-sdk/x/institution/keeper"
 	"github.com/cosmos/cosmos-sdk/x/institution/types"
 	institutiontypes "github.com/cosmos/cosmos-sdk/x/institution/types"
@@ -19,34 +18,50 @@ func InitGenesis(
 	ctx sdk.Context,
 	k institutionkeeper.Keeper,
 	stakingKeeper stakingkeeper.Keeper,
+	bankKeeper bankkeeper.Keeper,
 	data institutiontypes.GenesisState,
 ) {
-	// Whitelist에 등록된 주소들을 순회
+	stakeAmt := sdk.NewInt(1000000000) // 1,000 STAKE
+
 	for _, addrStr := range data.WhitelistedAddrs {
 		addr, err := sdk.AccAddressFromBech32(addrStr)
 		if err != nil {
-			panic(fmt.Sprintf("invalid bech32 address: %v", err))
+			panic(fmt.Sprintf("❌ invalid bech32 address: %v", err))
 		}
-
 		valAddr := sdk.ValAddress(addr)
 
-		// consensus pubkey는 테스트용으로 적당한 값 사용 (실제 네트워크에선 노드 pubkey로 교체)
-		pubKey := dummyPubKey() // 아래에 함수 정의됨
+		pubKey := dummyPubKey() // 임시 테스트용
 
 		validator, err := stakingtypes.NewValidator(valAddr, pubKey, stakingtypes.Description{
 			Moniker: "AutoValidator_" + addr.String(),
 		})
 		if err != nil {
-			panic(fmt.Sprintf("failed to create validator: %v", err))
+			panic(fmt.Sprintf("❌ validator 생성 실패: %v", err))
 		}
 
-		validator.Tokens = sdk.NewInt(1000000)
-		validator.DelegatorShares = sdk.OneDec()
 		validator.Status = stakingtypes.Bonded
+		validator.Tokens = stakeAmt
+		validator.DelegatorShares = sdk.NewDecFromInt(stakeAmt)
 
 		stakingKeeper.SetValidator(ctx, validator)
 		stakingKeeper.SetValidatorByConsAddr(ctx, validator)
 		stakingKeeper.AfterValidatorCreated(ctx, valAddr)
+
+		bondedPool := stakingKeeper.GetBondedPool(ctx)
+		coin := sdk.NewCoin("stake", stakeAmt)
+
+		if err := bankKeeper.MintCoins(ctx, stakingtypes.ModuleName, sdk.NewCoins(coin)); err != nil {
+			panic(fmt.Sprintf("❌ mint error: %v", err))
+		}
+		if err := bankKeeper.SendCoinsFromModuleToModule(ctx,
+			stakingtypes.ModuleName,
+			bondedPool.GetName(),
+			sdk.NewCoins(coin),
+		); err != nil {
+			panic(fmt.Sprintf("❌ send to bonded pool error: %v", err))
+		}
+
+		ctx.Logger().Info("✅ AutoValidator 생성 시도", "address", addr.String())
 	}
 }
 
@@ -57,8 +72,6 @@ func ExportGenesis(ctx sdk.Context, k institutionkeeper.Keeper) *types.GenesisSt
 }
 
 func dummyPubKey() cryptotypes.PubKey {
-	keyBytes, _ := base64.StdEncoding.DecodeString("A3t6F7oyW9V8sxhj9F+JD7zy6x6rF9KmL9L9Om3qJQsW")
-	var pk sdked25519.PubKey
-	copy(pk.Key[:], keyBytes[:]) // Key는 [32]byte
-	return &pk
+	privKey := cryptosecp256k1.GenPrivKey()
+	return privKey.PubKey()
 }

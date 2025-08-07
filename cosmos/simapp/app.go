@@ -166,6 +166,10 @@ var (
 		stakingtypes.NotBondedPoolName: {authtypes.Burner, authtypes.Staking},
 		govtypes.ModuleName:            {authtypes.Burner},
 		rewardtypes.ModuleName:         {authtypes.Minter},
+		// 👇 staking 모듈 계정 추가되어야 함!
+		stakingtypes.ModuleName: nil,
+		// institution 모듈에서 사용한 계정도 포함되어야 함
+		institutiontypes.ModuleName: {authtypes.Minter},
 	}
 )
 
@@ -410,7 +414,7 @@ func NewSimApp(
 		evidence.NewAppModule(app.EvidenceKeeper),
 		params.NewAppModule(app.ParamsKeeper),
 		authzmodule.NewAppModule(appCodec, app.AuthzKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
-		institutionmodule.NewAppModule(appCodec, app.InstitutionKeeper),
+		institutionmodule.NewAppModule(appCodec, app.InstitutionKeeper, app.StakingKeeper, app.BankKeeper),
 	)
 
 	// During begin block slashing happens after distr.BeginBlocker so that
