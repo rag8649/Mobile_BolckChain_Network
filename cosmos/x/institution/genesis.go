@@ -7,9 +7,11 @@ import (
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+	distributionkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
+	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	institutionkeeper "github.com/cosmos/cosmos-sdk/x/institution/keeper"
 	"github.com/cosmos/cosmos-sdk/x/institution/types"
-	institutiontypes "github.com/cosmos/cosmos-sdk/x/institution/types"
+	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
@@ -19,52 +21,65 @@ func InitGenesis(
 	k institutionkeeper.Keeper,
 	stakingKeeper stakingkeeper.Keeper,
 	bankKeeper bankkeeper.Keeper,
-	data institutiontypes.GenesisState,
+	distrKeeper distributionkeeper.Keeper,
+	data types.GenesisState,
 ) {
-	stakeAmt := sdk.NewInt(1000000000) // 1,000 STAKE
-
 	for _, addrStr := range data.WhitelistedAddrs {
-		addr, err := sdk.AccAddressFromBech32(addrStr)
+		accAddr, err := sdk.AccAddressFromBech32(addrStr)
 		if err != nil {
-			panic(fmt.Sprintf("❌ invalid bech32 address: %v", err))
+			panic(fmt.Sprintf("Invalid address: %v", err))
 		}
-		valAddr := sdk.ValAddress(addr)
+		valAddr := sdk.ValAddress(accAddr)
 
-		pubKey := dummyPubKey() // 임시 테스트용
+		// 1. 화이트리스트 등록
+		k.AddToWhitelist(ctx, accAddr)
 
-		validator, err := stakingtypes.NewValidator(valAddr, pubKey, stakingtypes.Description{
-			Moniker: "AutoValidator_" + addr.String(),
-		})
+		// 2. Validator 생성
+		pubKey := dummyPubKey()
+		description := stakingtypes.NewDescription("AutoValidator_"+accAddr.String(), "", "", "", "")
+		validator, err := stakingtypes.NewValidator(valAddr, pubKey, description)
 		if err != nil {
-			panic(fmt.Sprintf("❌ validator 생성 실패: %v", err))
+			panic(fmt.Sprintf("Failed to create validator: %v", err))
 		}
-
 		validator.Status = stakingtypes.Bonded
-		validator.Tokens = stakeAmt
-		validator.DelegatorShares = sdk.NewDecFromInt(stakeAmt)
+		validator.Tokens = sdk.NewInt(1000000000) // 1000stake
+		validator.DelegatorShares = sdk.NewDec(1000000000)
 
 		stakingKeeper.SetValidator(ctx, validator)
+		stakingKeeper.SetValidatorByPowerIndex(ctx, validator)
 		stakingKeeper.SetValidatorByConsAddr(ctx, validator)
-		stakingKeeper.AfterValidatorCreated(ctx, valAddr)
 
-		bondedPool := stakingKeeper.GetBondedPool(ctx)
-		coin := sdk.NewCoin("stake", stakeAmt)
+		// 3. Genesis에서는 Hook이 자동 호출되지 않으므로 distribution state 초기화
+		distrKeeper.SetValidatorOutstandingRewards(ctx, valAddr, distrtypes.ValidatorOutstandingRewards{Rewards: sdk.NewDecCoins()})
+		distrKeeper.SetValidatorAccumulatedCommission(ctx, valAddr, distrtypes.ValidatorAccumulatedCommission{Commission: sdk.NewDecCoins()})
+		distrKeeper.SetValidatorHistoricalRewards(ctx, valAddr, 0, distrtypes.NewValidatorHistoricalRewards(sdk.NewDecCoins(), 1))
+		distrKeeper.SetValidatorCurrentRewards(ctx, valAddr, distrtypes.NewValidatorCurrentRewards(sdk.NewDecCoins(), 1))
 
-		if err := bankKeeper.MintCoins(ctx, stakingtypes.ModuleName, sdk.NewCoins(coin)); err != nil {
-			panic(fmt.Sprintf("❌ mint error: %v", err))
+		// 4. Token mint → account → staking
+		amount := sdk.NewInt64Coin("stake", 1000000000)
+		coins := sdk.NewCoins(amount)
+
+		if err := bankKeeper.MintCoins(ctx, minttypes.ModuleName, coins); err != nil {
+			panic(err)
 		}
-		if err := bankKeeper.SendCoinsFromModuleToModule(ctx,
-			stakingtypes.ModuleName,
-			bondedPool.GetName(),
-			sdk.NewCoins(coin),
-		); err != nil {
-			panic(fmt.Sprintf("❌ send to bonded pool error: %v", err))
+		if err := bankKeeper.SendCoinsFromModuleToAccount(ctx, minttypes.ModuleName, accAddr, coins); err != nil {
+			panic(err)
 		}
 
-		ctx.Logger().Info("✅ AutoValidator 생성 시도", "address", addr.String())
+		// 5. 위임 (self-delegation)
+		_, err = stakingKeeper.Delegate(
+			ctx,
+			accAddr,
+			amount.Amount,
+			stakingtypes.Bonded,
+			validator,
+			true,
+		)
+		if err != nil {
+			panic(fmt.Sprintf("delegate error: %v", err))
+		}
 	}
 }
-
 func ExportGenesis(ctx sdk.Context, k institutionkeeper.Keeper) *types.GenesisState {
 	return &types.GenesisState{
 		WhitelistedAddrs: k.GetAllWhitelisted(ctx),

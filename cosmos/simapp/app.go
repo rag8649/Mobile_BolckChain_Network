@@ -162,7 +162,7 @@ var (
 		authtypes.FeeCollectorName:     nil,
 		distrtypes.ModuleName:          nil,
 		minttypes.ModuleName:           {authtypes.Minter},
-		stakingtypes.BondedPoolName:    {authtypes.Burner, authtypes.Staking},
+		stakingtypes.BondedPoolName:    {authtypes.Burner, authtypes.Staking, authtypes.Minter},
 		stakingtypes.NotBondedPoolName: {authtypes.Burner, authtypes.Staking},
 		govtypes.ModuleName:            {authtypes.Burner},
 		rewardtypes.ModuleName:         {authtypes.Minter},
@@ -414,7 +414,7 @@ func NewSimApp(
 		evidence.NewAppModule(app.EvidenceKeeper),
 		params.NewAppModule(app.ParamsKeeper),
 		authzmodule.NewAppModule(appCodec, app.AuthzKeeper, app.AccountKeeper, app.BankKeeper, app.interfaceRegistry),
-		institutionmodule.NewAppModule(appCodec, app.InstitutionKeeper, app.StakingKeeper, app.BankKeeper),
+		institutionmodule.NewAppModule(appCodec, app.InstitutionKeeper, app.StakingKeeper, app.BankKeeper, app.DistrKeeper),
 	)
 
 	// During begin block slashing happens after distr.BeginBlocker so that

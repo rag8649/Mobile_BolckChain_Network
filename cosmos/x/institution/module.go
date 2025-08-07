@@ -9,6 +9,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	bankkeeper "github.com/cosmos/cosmos-sdk/x/bank/keeper"
+	distrkeeper "github.com/cosmos/cosmos-sdk/x/distribution/keeper"
 	"github.com/cosmos/cosmos-sdk/x/institution/keeper"
 	"github.com/cosmos/cosmos-sdk/x/institution/types"
 	stakingkeeper "github.com/cosmos/cosmos-sdk/x/staking/keeper"
@@ -24,20 +25,22 @@ func (AppModuleBasic) Name() string {
 	return types.ModuleName
 }
 
-func NewAppModule(cdc codec.Codec, k keeper.Keeper, sk stakingkeeper.Keeper, bankKeeper bankkeeper.Keeper) AppModule {
+func NewAppModule(cdc codec.Codec, k keeper.Keeper, sk stakingkeeper.Keeper, bankKeeper bankkeeper.Keeper, distributionKeeper distrkeeper.Keeper) AppModule {
 	return AppModule{
-		cdc:           cdc,
-		keeper:        k,
-		stakingKeeper: sk,
-		bankKeeper:    bankKeeper,
+		cdc:                cdc,
+		keeper:             k,
+		stakingKeeper:      sk,
+		bankKeeper:         bankKeeper,
+		distributionKeeper: distributionKeeper,
 	}
 }
 
 type AppModule struct {
-	cdc           codec.Codec
-	keeper        keeper.Keeper
-	stakingKeeper stakingkeeper.Keeper
-	bankKeeper    bankkeeper.Keeper
+	cdc                codec.Codec
+	keeper             keeper.Keeper
+	stakingKeeper      stakingkeeper.Keeper
+	bankKeeper         bankkeeper.Keeper
+	distributionKeeper distrkeeper.Keeper
 }
 
 func (am AppModule) Name() string { return types.ModuleName }
@@ -63,7 +66,7 @@ func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, bz json.Ra
 	cdc.MustUnmarshalJSON(bz, &genesisState)
 
 	// bankKeeper 추가
-	InitGenesis(ctx, am.keeper, am.stakingKeeper, am.bankKeeper, genesisState)
+	InitGenesis(ctx, am.keeper, am.stakingKeeper, am.bankKeeper, am.distributionKeeper, genesisState)
 
 	return []abci.ValidatorUpdate{}
 }
