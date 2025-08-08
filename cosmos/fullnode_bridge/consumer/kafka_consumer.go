@@ -447,4 +447,5 @@ func StartConsumer() {
 	go StartDeviceAddressConsumer()  // 디바이스 id, 주소 매핑 토픽
 
 	go StartAccountConsumer() // 회원가입 요청 토픽
+	go StartBalanceConsumer() // 잔고 확인 토픽
 }

@@ -117,6 +117,9 @@ message Validator {
     (gogoproto.customtype) = "github.com/cosmos/cosmos-sdk/types.Int",
     (gogoproto.nullable)   = false
   ];
+  
+  // certificate_id add
+    string certificate_id = 12 [(gogoproto.moretags) = "yaml:\"certificate_id\""];
 }
 
 // BondStatus is the status of a validator.

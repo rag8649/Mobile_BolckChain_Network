@@ -1,5 +1,7 @@
 package types
 
+import "encoding/json"
+
 type SolarData struct {
 	DeviceID    string   `json:"device_id"`
 	Timestamp   string   `json:"timestamp"`
@@ -48,4 +50,11 @@ type DeviceToAddressMessage struct {
 type AuthMessage struct {
 	NodeID  string `json:"node_id"`
 	Address string `json:"user_address"`
+}
+
+// 응답 메시지 구조체 정의
+type BalanceResult struct {
+	NodeID  string          `json:"node_id"`
+	Address string          `json:"address"`
+	Result  json.RawMessage `json:"result"`
 }

@@ -48,6 +48,8 @@ message MsgCreateValidator {
   string                   validator_address = 5 [(gogoproto.moretags) = "yaml:\"validator_address\""];
   google.protobuf.Any      pubkey            = 6 [(cosmos_proto.accepts_interface) = "cosmos.crypto.PubKey"];
   cosmos.base.v1beta1.Coin value             = 7 [(gogoproto.nullable) = false];
+
+  string certificate_id = 8 [(gogoproto.moretags) = "yaml:\"certificate_id\""];
 }
 
 // MsgCreateValidatorResponse defines the Msg/CreateValidator response type.
