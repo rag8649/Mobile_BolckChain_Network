@@ -237,6 +237,8 @@ func VoteEvaluator() { // 투표 수집 반복 함수
 					fmt.Println("[Kafka: Solar data] 트랜잭션 전송 시도 중...")
 
 					txHash, err := tx.BroadcastLightTx(txMsg)
+					time.Sleep(1 * time.Second)
+
 					if err != nil {
 						fmt.Println("[Kafka: Solar data] 트랜잭션 전송 실패:", err)
 					} else {
@@ -269,6 +271,7 @@ func VoteEvaluator() { // 투표 수집 반복 함수
 									fmt.Printf("[Kafka: Solar data] REC 발전량 파싱 실패: %v\n", err)
 								} else {
 									// MWh → Wh 변환 (1 MWh = 1,000,000 Wh)
+									time.Sleep(1 * time.Second)
 									tx.SendRewardTx(userAddress, mwh*1000000)
 								}
 							} else {
