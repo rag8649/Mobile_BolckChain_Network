@@ -3,7 +3,7 @@ package config
 var (
 	FullnodeID = "node_A"
 	// Kafka 브로커 IP 및 포트
-	KafkaBrokers = []string{"192.168.0.132:10000"}
+	KafkaBrokers = []string{"192.168.0.131:26650"}
 
 	// Kafka Consumer
 	TopicLightTx         = "light-vote-topic"      // 태양광 발전량 메세지 토픽
