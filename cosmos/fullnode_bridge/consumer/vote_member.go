@@ -2,74 +2,65 @@ package consumer
 
 import (
 	"encoding/json"
-	"fmt"
-
-	"github.com/cosmos/cosmos-sdk/fullnode_bridge/config"
+	"log"
 
 	"github.com/IBM/sarama"
+
+	"github.com/cosmos/cosmos-sdk/fullnode_bridge/config"
+	"github.com/cosmos/cosmos-sdk/fullnode_bridge/types"
 )
 
-func StartVoteMemberConsumer() {
-	fmt.Println("[Kafka: Users] StartVoteMemberConsumer 시작됨")
+func StartRewardOutputConsumer() error {
+	log.Println("[Kafka: RewardOut] StartRewardOutputConsumer (no dedupe, no worker)")
 
-	brokers := config.KafkaBrokers
-	topic := config.TopicVoteMember
-	partition := int32(0)
+	cfg := sarama.NewConfig()
+	cfg.Version = sarama.V2_1_0_0
 
-	saramaConfig := sarama.NewConfig()
-	saramaConfig.Version = sarama.V2_1_0_0
-
-	// 1. 메시지 요청을 먼저 전송
-	go func() {
-		err := sendInitialRequest(brokers, config.TopicRequestMemberCount)
-		if err != nil {
-			fmt.Printf("[Kafka: Users] 초기 요청 전송 실패: %v\n", err)
-		} else {
-			fmt.Println("[Kafka: Users] 초기 VoteMemberCount 요청 전송 완료")
-		}
-	}()
-
-	// 2. 컨슈머 초기화
-	consumer, err := sarama.NewConsumer(brokers, saramaConfig)
+	consumer, err := sarama.NewConsumer(config.KafkaBrokers, cfg)
 	if err != nil {
-		panic(fmt.Sprintf("[Kafka: Users] Consumer 생성 실패: %v", err))
+		return err
 	}
 
-	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetNewest)
+	const partition = int32(0)
+	pc, err := consumer.ConsumePartition(config.TopicResultVMemberReward, partition, sarama.OffsetNewest)
 	if err != nil {
-		panic(fmt.Sprintf("[Kafka: Users] 파티션 구독 실패: %v", err))
+		_ = consumer.Close()
+		return err
 	}
 
 	go func() {
-		fmt.Println("[Kafka: Users] Kafka Partition Consumer 수신 대기 중...")
-		for msg := range partitionConsumer.Messages() {
-			fmt.Printf("[Kafka: Users] 수신 메시지: %s\n", string(msg.Value))
+		defer func() {
+			_ = pc.Close()
+			_ = consumer.Close()
+		}()
 
-			var parsed VoteMemberMsg
-			if err := json.Unmarshal(msg.Value, &parsed); err != nil {
-				fmt.Printf("[Kafka: Users] JSON 파싱 오류: %v\n", err)
+		for msg := range pc.Messages() {
+			if msg == nil || len(msg.Value) == 0 {
 				continue
 			}
 
-			VoteMemberCount = parsed.Count
-			fmt.Printf("[Kafka: Users] VoteMemberCount 갱신됨: %d\n", VoteMemberCount)
+			// 1) 메시지 파싱
+			var resp types.MemberRewardOutputMessage
+			if err := json.Unmarshal(msg.Value, &resp); err != nil {
+				log.Printf("[RewardOut] 파싱 실패: %v", err)
+				continue
+			}
+
+			// 2) 내 풀노드 요청인지 확인 (아니면 무시)
+			if resp.FullnodeID != config.FullnodeID {
+				continue
+			}
+
+			// 3) 여기서 추가 동작 없이 로그만 남김 (요청사항 반영)
+			log.Printf("[RewardOut] 보상 응답 수신: 대상=%d명 req=%s ts=%s",
+				len(resp.Rewards), resp.RequestID, resp.Timestamp)
+
+			// 필요 시, 아래 주석을 해제해 즉시 처리 로직을 직접 넣을 수 있습니다.
+			// for addr, amt := range resp.Rewards {
+			//     // TODO: 즉시 체인 트랜잭션 전송/기록/기타 처리
+			// }
 		}
 	}()
-}
 
-func sendInitialRequest(brokers []string, topic string) error {
-	producer, err := sarama.NewSyncProducer(brokers, nil)
-	if err != nil {
-		return fmt.Errorf("[Kafka: Users] Kafka 프로듀서 생성 실패: %w", err)
-	}
-	defer producer.Close()
-
-	// 메시지 내용이 없어도 OK. 수신자(오라클)는 topic만 보면 됨
-	msg := &sarama.ProducerMessage{
-		Topic: topic,
-		Value: sarama.StringEncoder(`{"request": "latest_vote_count"}`),
-	}
-
-	_, _, err = producer.SendMessage(msg)
-	return err
+	return nil
 }

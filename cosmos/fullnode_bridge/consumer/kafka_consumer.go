@@ -529,7 +529,7 @@ func StartSolarKafkaConsumer() {
 func StartConsumer() {
 	go StartSolarKafkaConsumer()     // 태양광 발전량 토픽
 	go StartLocationOutputConsumer() // 위치 정보 토픽
-	go StartVoteMemberConsumer()     // 회원 수 토픽
+	go StartVMemberConsumer()        // 회원 수 토픽
 	go StartDeviceAddressConsumer()  // 디바이스 id, 주소 매핑 토픽
 
 	go StartAccountConsumer() // 회원가입 요청 토픽

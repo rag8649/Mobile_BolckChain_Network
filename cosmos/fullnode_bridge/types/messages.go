@@ -58,3 +58,10 @@ type BalanceResult struct {
 	Address string          `json:"address"`
 	Result  json.RawMessage `json:"result"`
 }
+
+type MemberRewardOutputMessage struct {
+	RequestID  string             `json:"request_id,omitempty"`
+	FullnodeID string             `json:"fullnode_id"`
+	Rewards    map[string]float64 `json:"rewards"`
+	Timestamp  string             `json:"timestamp"`
+}
