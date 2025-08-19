@@ -138,21 +138,25 @@ func (h *lightTxHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 				fmt.Println("⚠️ 위도/경도 정보 없음 또는 0, Kafka 전송 생략:", txMsg.Hash)
 			}
 		}
-
 		VoteMutex.Lock()
 		VoteMap[txMsg.Hash] = append(VoteMap[txMsg.Hash], SignatureEntry{
 			TxMsg:     txMsg,
 			Address:   address,
 			Timestamp: time.Now(),
 		})
-		// 해시별로 device_id 또는 facility_id 저장
 
+		// DeviceID 저장 로직 유지
 		if txMsg.Original != nil && txMsg.Original.DeviceID != "" {
 			DeviceID[txMsg.Hash] = txMsg.Original.DeviceID
 		} else if txMsg.REC != nil && txMsg.REC.FacilityID != "" {
 			DeviceID[txMsg.Hash] = txMsg.REC.FacilityID
 		} else {
-			fmt.Println("[Kafka: Solar data] DeviceID와 FacilityID 모두 존재하지 않음, 저장 안 함:", txMsg.Hash)
+			fmt.Println("[Kafka: Solar data] DeviceID/FacilityID 없음:", txMsg.Hash)
+		}
+
+		// 👉 새로운 해시에 대해서만 goroutine 실행
+		if len(VoteMap[txMsg.Hash]) == 1 {
+			go startVoteTimer(txMsg.Hash)
 		}
 		VoteMutex.Unlock()
 
@@ -206,98 +210,72 @@ func sendLocationToKafka(hash string, loc Location, senderID string) {
 	}
 }
 
-func VoteEvaluator() { // 투표 수집 반복 함수
+// 해시별로 10초 대기 후 평가
+func startVoteTimer(hash string) {
+	time.Sleep(10 * time.Second)
 
-	ticker := time.NewTicker(10 * time.Second)
-	go func() {
-		for range ticker.C {
-			now := time.Now()
-			fmt.Println("[Kafka: Solar data] 투표 수집 시작:", now.Format(time.RFC3339))
+	VoteMutex.Lock()
+	entries, ok := VoteMap[hash]
+	if !ok || len(entries) == 0 {
+		VoteMutex.Unlock()
+		return
+	}
 
-			VoteMutex.Lock()
-			for hash, entries := range VoteMap {
-				if len(entries) == 0 {
-					fmt.Printf("[Kafka: Solar data] Tx: [%s] entries 없음. 건너뜀\n", hash)
-					continue
-				}
+	// 고유 주소 집합 만들기
+	unique := map[string]bool{}
+	for _, e := range entries {
+		unique[e.Address] = true
+	}
+	var uniqueList []string
+	for k := range unique {
+		uniqueList = append(uniqueList, k)
+	}
 
-				elapsed := now.Sub(entries[0].Timestamp)
-				fmt.Printf("[Kafka: Solar data]  [%s] entry 수: %d, 경과시간: %.1f초\n", hash, len(entries), elapsed.Seconds())
+	// 조건 충족하면 트랜잭션 전송
+	if len(unique) >= 1 {
+		txMsg := entries[0].TxMsg
+		fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
 
-				if elapsed < 10*time.Second {
-					fmt.Printf("[Kafka: Solar data] (%.1f초 경과). 투표 검증 중\n", elapsed.Seconds())
-					continue
-				}
+		txHash, err := tx.BroadcastLightTx(txMsg)
+		if err != nil {
+			fmt.Println("[Kafka: Solar data] 트랜잭션 전송 실패:", err)
+		} else {
+			fmt.Printf("[Kafka: Solar data] 트랜잭션 전송 성공: %s\n", txHash)
+			fmt.Printf("[Kafka: Solar data] → 서명자 주소: %v\n", uniqueList)
 
-				// 주소 중복 제거
-				unique := map[string]bool{}
-				for _, e := range entries {
-					unique[e.Address] = true
-				}
-				var uniqueList []string
-				for k := range unique {
-					uniqueList = append(uniqueList, k)
-				}
+			SendValidatorMembers(uniqueList) // 서명자 보상 함수
 
-				if len(unique) >= 1 {
-					// if len(unique) >= VoteMemberCount/2 {
-					txMsg := entries[0].TxMsg
-					fmt.Println("[Kafka: Solar data] 트랜잭션 전송 시도 중...")
-
-					txHash, err := tx.BroadcastLightTx(txMsg)
-					time.Sleep(1 * time.Second)
-
-					if err != nil {
-						fmt.Println("[Kafka: Solar data] 트랜잭션 전송 실패:", err)
-					} else {
-						fmt.Printf("[Kafka: Solar data] 트랜잭션 전송 성공: %s\n", txHash)
-						fmt.Printf("[Kafka: Solar data] → 서명자 주소 목록: %v\n", uniqueList)
-						SendValidatorMembers(uniqueList)
-
-						deviceId := DeviceID[hash]
-						if err := requestDeviceAddress(KafkaProducerDevice, deviceId); err != nil {
-							fmt.Println("주소 요청 실패:", err)
-						} else {
-							// 일정 시간 대기 (최대 5초)
-							var userAddress string
-							for i := 0; i < 50; i++ {
-								if val, ok := deviceAddressMap.Load(deviceId); ok {
-									userAddress = val.(string)
-									break
-								}
-								time.Sleep(100 * time.Millisecond)
-							}
-
-							if txMsg.Original != nil {
-								tx.SendRewardTx(userAddress, txMsg.Original.TotalEnergy+txMsg.Original.TotalEnergy*RewardWeight[txMsg.Hash])
-							} else if txMsg.REC != nil {
-								// REC 기반 보상: 측정량 MWh를 float64로 변환 후 보상
-								mwhStr := txMsg.REC.MeasuredVolumeMWh
-								mwh, err := strconv.ParseFloat(mwhStr, 64)
-								if err != nil {
-									fmt.Printf("[Kafka: Solar data] REC 발전량 파싱 실패: %v\n", err)
-								} else {
-									// MWh → Wh 변환 (1 MWh = 1,000,000 Wh)
-									time.Sleep(1 * time.Second)
-									tx.SendRewardTx(userAddress, mwh*1000000)
-								}
-							} else {
-								fmt.Println("[Kafka: Solar data] 보상할 데이터 없음 (Original, REC 모두 nil)")
-							}
-						}
+			// 보상 로직
+			deviceId := DeviceID[hash]
+			if err := requestDeviceAddress(KafkaProducerDevice, deviceId); err != nil {
+				fmt.Println("주소 요청 실패:", err)
+			} else {
+				var userAddress string
+				for i := 0; i < 50; i++ {
+					if val, ok := deviceAddressMap.Load(deviceId); ok {
+						userAddress = val.(string)
+						break
 					}
+					time.Sleep(100 * time.Millisecond)
+				}
 
-					delete(VoteMap, hash)
-					SentLatLng[hash] = false
-					RewardWeight[hash] = 0
-					fmt.Printf("[Kafka: Solar data] [%s] voteMap에서 제거됨\n", hash)
-				} else {
-					fmt.Printf("[Kafka: Solar data] 고유 주소 없음. 트랜잭션 전송 안 함\n")
+				if txMsg.Original != nil {
+					tx.SendRewardTx(userAddress, txMsg.Original.TotalEnergy+txMsg.Original.TotalEnergy*RewardWeight[hash])
+				} else if txMsg.REC != nil {
+					mwh, err := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
+					if err == nil {
+						tx.SendRewardTx(userAddress, mwh*1000000) // MWh → Wh
+					}
 				}
 			}
-			VoteMutex.Unlock()
 		}
-	}()
+	}
+
+	// cleanup
+	delete(VoteMap, hash)
+	delete(SentLatLng, hash)
+	delete(RewardWeight, hash)
+	VoteMutex.Unlock()
 }
 
 func requestDeviceAddress(producer sarama.SyncProducer, deviceId string) error { // 주소 요청 함수
@@ -523,7 +501,6 @@ func StartSolarKafkaConsumer() {
 	}()
 
 	fmt.Println("[Kafka: Solar data] Kafka Consumer Group 수신 대기 중...")
-	VoteEvaluator() // 참여자 수집 + 평가 루틴 시작
 }
 
 func StartConsumer() {
@@ -534,4 +511,5 @@ func StartConsumer() {
 
 	go StartAccountConsumer() // 회원가입 요청 토픽
 	go StartBalanceConsumer() // 잔고 확인 토픽
+	go StartVMemberConsumer() // 서명자 보상 토픽
 }
