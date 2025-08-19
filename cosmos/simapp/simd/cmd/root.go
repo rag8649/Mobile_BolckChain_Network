@@ -158,7 +158,6 @@ func initRootCmd(rootCmd *cobra.Command, encodingConfig params.EncodingConfig) {
 	)
 
 	a := appCreator{encodingConfig}
-	// server.AddCommands(rootCmd, simapp.DefaultNodeHome, a.newApp, a.appExport, addModuleInitFlags)
 	server.AddCommands(rootCmd, simapp.DefaultNodeHome, a.newApp, a.appExport, func(startCmd *cobra.Command) {
 		// 기존 모듈 초기화 플래그 추가
 		addModuleInitFlags(startCmd)
@@ -167,10 +166,6 @@ func initRootCmd(rootCmd *cobra.Command, encodingConfig params.EncodingConfig) {
 		startCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 			fmt.Println("Operate Kafka consumer")
 			// 카프카 연동 시작
-			// go fullnodebridge.StartSolarKafkaConsumer()
-			// go fullnodebridge.StartAccountConsumer()
-			// go fullnodebridge.StartVoteMemberConsumer()
-			// go fullnodebridge.StartDeviceAddressConsumer()
 			go fullnodebridge.StartConsumer()
 			return nil
 		}

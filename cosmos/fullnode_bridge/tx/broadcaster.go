@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strconv"
+	"time"
 
 	"github.com/cosmos/cosmos-sdk/fullnode_bridge/types"
 )
@@ -118,8 +119,6 @@ func SendRewardTx(toAddr string, power float64) (string, error) {
 	amount := int64(power)
 	amountStr := strconv.FormatInt(amount, 10)
 
-	fmt.Printf("Kafka: [reward] 보상 트랜잭션 준비 중: 주소=%s, 발전량=%.2f → 지급액=%dstake\n", toAddr, power, amount)
-
 	// 트랜잭션 실행 명령
 	cmd := exec.Command("/root/Mobile_BolckChain_Network/cosmos/build/simd", "tx", "reward", "reward-solar-power",
 		toAddr, amountStr,
@@ -138,6 +137,15 @@ func SendRewardTx(toAddr string, power float64) (string, error) {
 		fmt.Println("[Kafka: reward] 트랜잭션 전송 실패:", err)
 		fmt.Println("[Kafka: reward] 출력 내용:", output)
 		return output, err
+	}
+
+	time.Sleep(10 * time.Second)
+
+	// 여기서 output은 전송 직후 출력이고, 필요하다면 txhash를 추출해 조회할 수 있음
+
+	balance, err := QueryBalance(toAddr)
+	if err != nil {
+		fmt.Println("[Kafka: reward] 결과:", balance)
 	}
 
 	return output, nil

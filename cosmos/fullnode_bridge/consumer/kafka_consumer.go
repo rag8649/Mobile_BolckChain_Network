@@ -56,15 +56,23 @@ type LocationOutputMessage struct { // 오라클로부터 받는 결과값
 	SenderID string  `json:"sender_id"`
 }
 
+// 오라클로부터 받는 참가자 보상 결과값
+type MemberRewardOutputMessage struct {
+	SenderID string             `json:"sender_id"` // 메시지 송신자 ID
+	Rewards  map[string]float64 `json:"rewards"`   // 참가자 주소 → 보상 금액
+}
+
 type VoteMemberMsg struct {
 	Count int `json:"count"`
 }
 
 var KafkaProducerDevice sarama.SyncProducer // 디바이스 정보 전송 프로듀서
+var KafkaProducerVMember sarama.SyncProducer
 
-func InitDeviceProducer() {
+func InitProducer() {
 	KafkaProducerDevice = NewKafkaSyncProducer(config.KafkaBrokers)
 	KafkaProducerLatLng = NewKafkaSyncProducer(config.KafkaBrokers)
+	KafkaProducerVMember = NewKafkaSyncProducer(config.KafkaBrokers)
 }
 
 func NewKafkaSyncProducer(brokers []string) sarama.SyncProducer { // 프로듀서 초기화
@@ -244,6 +252,7 @@ func VoteEvaluator() { // 투표 수집 반복 함수
 					} else {
 						fmt.Printf("[Kafka: Solar data] 트랜잭션 전송 성공: %s\n", txHash)
 						fmt.Printf("[Kafka: Solar data] → 서명자 주소 목록: %v\n", uniqueList)
+						SendValidatorMembers(uniqueList)
 
 						deviceId := DeviceID[hash]
 						if err := requestDeviceAddress(KafkaProducerDevice, deviceId); err != nil {
@@ -260,8 +269,6 @@ func VoteEvaluator() { // 투표 수집 반복 함수
 							}
 
 							if txMsg.Original != nil {
-								// 🌞 SolarData 기반 보상
-								fmt.Printf("[Kafka: reward] SendRewardTx 호출 전: energy=%.2f, weight=%.2f, user=%s\n", txMsg.Original.TotalEnergy, RewardWeight[txMsg.Hash], userAddress)
 								tx.SendRewardTx(userAddress, txMsg.Original.TotalEnergy+txMsg.Original.TotalEnergy*RewardWeight[txMsg.Hash])
 							} else if txMsg.REC != nil {
 								// REC 기반 보상: 측정량 MWh를 float64로 변환 후 보상
@@ -370,6 +377,82 @@ func StartDeviceAddressConsumer() {
 	}()
 }
 
+func SendValidatorMembers(uniqueList []string) error {
+	// 보낼 메시지 구성
+	vMemberMsg := map[string]interface{}{
+		"fullnode_id": config.FullnodeID,
+		"validators":  uniqueList,
+		"timestamp":   time.Now().Format(time.RFC3339),
+	}
+
+	// JSON 직렬화
+	msgBytes, err := json.Marshal(vMemberMsg)
+	if err != nil {
+		return fmt.Errorf("VMember 메시지 직렬화 실패: %w", err)
+	}
+
+	// Kafka 메시지 생성
+	kafkaMsg := &sarama.ProducerMessage{
+		Topic: config.TopicRequestVMemberReward, // 원하는 토픽명으로 변경 가능
+		Value: sarama.ByteEncoder(msgBytes),
+	}
+
+	// 전송
+	_, _, err = KafkaProducerVMember.SendMessage(kafkaMsg)
+	if err != nil {
+		return fmt.Errorf("VMember 메시지 전송 실패: %w", err)
+	}
+
+	fmt.Printf("[Kafka: Solar data] VMember 메시지 전송 성공: %+v\n", vMemberMsg)
+	return nil
+}
+
+func StartVMemberConsumer() {
+	brokers := config.KafkaBrokers
+	topic := config.TopicResultVMemberReward
+	partition := int32(0) // 토픽 파티션 고정 "result-location-topic"
+
+	cfg := sarama.NewConfig()
+	cfg.Version = sarama.V2_1_0_0
+
+	consumer, err := sarama.NewConsumer(brokers, cfg)
+	if err != nil {
+		panic(fmt.Sprintf("[Kafka: Member Reward] 단일 Consumer 생성 실패: %v", err))
+	}
+
+	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetNewest)
+	if err != nil {
+		panic(fmt.Sprintf("[Kafka: Member Reward] 파티션 구독 실패: %v", err))
+	}
+
+	go func() {
+		fmt.Println("[Kafka: Member Reward] 응답 수신 대기 중...")
+		for msg := range partitionConsumer.Messages() {
+			fmt.Println("[Kafka: Member Reward] 수신된 메시지:", string(msg.Value))
+
+			var outputMsg MemberRewardOutputMessage
+			if err := json.Unmarshal(msg.Value, &outputMsg); err != nil {
+				fmt.Println("[Kafka: Member Reward] 메시지 파싱 실패:", err)
+				continue
+			}
+
+			// ⚠️ 필터링: 내 노드가 보낸 메시지인지 확인
+			if outputMsg.SenderID != config.FullnodeID {
+				fmt.Printf("[Kafka: Member Reward] id: %s\n", outputMsg.SenderID)
+				continue // 내 응답 아님, 무시
+			}
+
+			// ✅ Rewards 맵 순회하면서 트랜잭션 전송
+			for addr, reward := range outputMsg.Rewards {
+				fmt.Printf("[Kafka: Member Reward] 서명자 보상 지급 시작 → 주소: %s, 보상: %f\n", addr, reward)
+				if _, err := tx.SendRewardTx(addr, reward); err != nil {
+					fmt.Printf("[Kafka: Member Reward] 보상 트랜잭션 실패 (addr=%s): %v\n", addr, err)
+				}
+			}
+		}
+	}()
+
+}
 func StartLocationOutputConsumer() {
 	brokers := config.KafkaBrokers
 	topic := config.TopicLocationResult
@@ -425,7 +508,7 @@ func StartSolarKafkaConsumer() {
 	saramaConfig.Consumer.Offsets.Initial = sarama.OffsetNewest
 
 	consumerGroup, err := sarama.NewConsumerGroup(brokers, groupID, saramaConfig)
-	InitDeviceProducer()
+	InitProducer()
 	if err != nil {
 		panic(fmt.Sprintf("[Kafka: Solar data] ConsumerGroup 생성 실패: %v", err))
 	}
