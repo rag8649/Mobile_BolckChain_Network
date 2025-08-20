@@ -259,14 +259,17 @@ func startVoteTimer(hash string) {
 					time.Sleep(100 * time.Millisecond)
 				}
 
-				if txMsg.Original != nil {
-					tx.SendRewardTx(userAddress, txMsg.Original.TotalEnergy+txMsg.Original.TotalEnergy*RewardWeight[hash])
-				} else if txMsg.REC != nil {
-					mwh, err := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
-					if err == nil {
-						tx.SendRewardTx(userAddress, mwh*1000000) // MWh → Wh
+				if userAddress != "" {
+					if txMsg.Original != nil {
+						tx.SendRewardTxSafely(userAddress, txMsg.Original.TotalEnergy+txMsg.Original.TotalEnergy*RewardWeight[hash])
+					} else if txMsg.REC != nil {
+						mwh, err := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
+						if err == nil {
+							tx.SendRewardTxSafely(userAddress, mwh*1000000) // MWh → Wh
+						}
 					}
 				}
+
 			}
 		}
 	}
@@ -320,8 +323,6 @@ func StartDeviceAddressConsumer() {
 
 	go func() {
 		for msg := range partitionConsumer.Messages() {
-			fmt.Printf("[Kafka: DeviceAddress] 메시지 수신 (offset=%d, partition=%d): %s\n",
-				msg.Offset, msg.Partition, string(msg.Value))
 
 			var response types.DeviceToAddressMessage
 			if err := json.Unmarshal(msg.Value, &response); err != nil {
@@ -423,7 +424,7 @@ func StartVMemberConsumer() {
 			// ✅ Rewards 맵 순회하면서 트랜잭션 전송
 			for addr, reward := range outputMsg.Rewards {
 				fmt.Printf("[Kafka: Member Reward] 서명자 보상 지급 시작 → 주소: %s, 보상: %f\n", addr, reward)
-				if _, err := tx.SendRewardTx(addr, reward); err != nil {
+				if err := tx.SendRewardTxSafely(addr, reward); err != nil {
 					fmt.Printf("[Kafka: Member Reward] 보상 트랜잭션 실패 (addr=%s): %v\n", addr, err)
 				}
 			}

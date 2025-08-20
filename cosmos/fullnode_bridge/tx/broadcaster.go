@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/cosmos/cosmos-sdk/fullnode_bridge/types"
@@ -56,7 +57,7 @@ func BroadcastLightTx(msg types.LightTxMessage) (string, error) {
 	// 공통 플래그 추가
 	args = append(args,
 		"--from", "alice",
-		"--home", "/root/Mobile_BolckChain_Network/cosmos/private/.simapp",
+		"--home", "private/.simapp",
 		"--chain-id", "learning-chain-1",
 		"--keyring-backend", "test",
 		"--broadcast-mode", "block",
@@ -65,7 +66,7 @@ func BroadcastLightTx(msg types.LightTxMessage) (string, error) {
 		"--output", "json",
 	)
 
-	cmd := exec.Command("/root/Mobile_BolckChain_Network/cosmos/build/simd", args...)
+	cmd := exec.Command("build/simd", args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("simd error: %v\noutput: %s", err, string(output))
@@ -84,11 +85,11 @@ func BroadcastLightTx(msg types.LightTxMessage) (string, error) {
 // SendStakeToAddress.go
 func SendStakeToAddress(toAddr string) (string, error) {
 	// 예시 CLI 호출
-	cmd := exec.Command("/root/Mobile_BolckChain_Network/cosmos/build/simd", "tx", "bank", "send",
+	cmd := exec.Command("build/simd", "tx", "bank", "send",
 		"alice", toAddr, "1stake",
 		"--gas", "auto",
 		"--chain-id", "learning-chain-1",
-		"--home", "/root/Mobile_BolckChain_Network/cosmos/private/.simapp",
+		"--home", "private/.simapp",
 		"--yes", "--keyring-backend", "test", "--broadcast-mode", "sync")
 
 	out, err := cmd.CombinedOutput()
@@ -97,9 +98,9 @@ func SendStakeToAddress(toAddr string) (string, error) {
 
 func QueryBalance(address string) (string, error) {
 	// simd CLI를 통한 잔고 조회
-	cmd := exec.Command("/root/Mobile_BolckChain_Network/cosmos/build/simd", "query", "bank", "balances", address,
+	cmd := exec.Command("build/simd", "query", "bank", "balances", address,
 		"--node", "tcp://localhost:26657", // RPC 노드 주소 (필요 시 수정 가능)
-		"--home", "/root/Mobile_BolckChain_Network/cosmos/private/.simapp",
+		"--home", "private/.simapp",
 		"--output", "json")
 
 	out, err := cmd.CombinedOutput()
@@ -109,6 +110,15 @@ func QueryBalance(address string) (string, error) {
 	return string(out), nil
 }
 
+var txLock sync.Mutex
+
+func SendRewardTxSafely(addr string, amount float64) error {
+	txLock.Lock()
+	defer txLock.Unlock()
+	_, err := SendRewardTx(addr, amount)
+	return err
+}
+
 func SendRewardTx(toAddr string, power float64) (string, error) {
 	// 발전량이 0 이하이면 트랜잭션 안 보냄
 	if power <= 0 {
@@ -116,15 +126,15 @@ func SendRewardTx(toAddr string, power float64) (string, error) {
 	}
 
 	// 소수점 버림
-	amount := int64(power)
+	amount := int64(power * 10)
 	amountStr := strconv.FormatInt(amount, 10)
 
 	// 트랜잭션 실행 명령
-	cmd := exec.Command("/root/Mobile_BolckChain_Network/cosmos/build/simd", "tx", "reward", "reward-solar-power",
+	cmd := exec.Command("build/simd", "tx", "reward", "reward-solar-power",
 		toAddr, amountStr,
 		"--from", "alice",
 		"--chain-id", "learning-chain-1",
-		"--home", "/root/Mobile_BolckChain_Network/cosmos/private/.simapp",
+		"--home", "private/.simapp",
 		"--gas", "auto",
 		"--yes",
 		"--keyring-backend", "test",
@@ -139,12 +149,14 @@ func SendRewardTx(toAddr string, power float64) (string, error) {
 		return output, err
 	}
 
+	// 필요하다면 txhash 추출 후 블록 포함 여부 확인
 	time.Sleep(10 * time.Second)
 
-	// 여기서 output은 전송 직후 출력이고, 필요하다면 txhash를 추출해 조회할 수 있음
-
+	// 잔고 조회
 	balance, err := QueryBalance(toAddr)
 	if err != nil {
+		fmt.Println("[Kafka: reward] 잔고 조회 실패:", err)
+	} else {
 		fmt.Println("[Kafka: reward] 결과:", balance)
 	}
 
