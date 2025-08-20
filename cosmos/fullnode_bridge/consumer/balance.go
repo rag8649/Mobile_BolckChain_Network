@@ -37,63 +37,6 @@ func (h *balanceHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 			continue
 		}
 		fmt.Println("[Kafka: Balance] 잔고 확인 결과:", balanceJSON)
-
-		// 🔍 JSON에서 balance만 추출
-		var balanceResult struct {
-			Balances []struct {
-				Denom  string `json:"denom"`
-				Amount string `json:"amount"`
-			} `json:"balances"`
-		}
-		if err := json.Unmarshal([]byte(balanceJSON), &balanceResult); err != nil {
-			fmt.Println("[Kafka: Balance] 잔고 JSON 파싱 실패:", err)
-			continue
-		}
-
-		// 필요한 잔액(예: stake)만 추출
-		var stakeAmount string
-		for _, b := range balanceResult.Balances {
-			if b.Denom == "stake" {
-				stakeAmount = b.Amount
-				break
-			}
-		}
-
-		if stakeAmount == "" {
-			stakeAmount = "0"
-		}
-
-		// 🔁 결과 메시지 (잔액만 포함)
-		response := struct {
-			NodeID  string `json:"node_id"`
-			Address string `json:"address"`
-			Balance string `json:"balance"`
-		}{
-			NodeID:  authMsg.NodeID,
-			Address: authMsg.Address,
-			Balance: stakeAmount,
-		}
-
-		encoded, err := json.Marshal(response)
-		if err != nil {
-			fmt.Println("[Kafka: Balance] 결과 메시지 인코딩 실패:", err)
-			continue
-		}
-
-		// Kafka로 결과 전송
-		producerMsg := &sarama.ProducerMessage{
-			Topic: h.resultTopic,
-			Value: sarama.ByteEncoder(encoded),
-		}
-
-		_, _, err = h.producer.SendMessage(producerMsg)
-		if err != nil {
-			fmt.Println("[Kafka: Balance] 결과 메시지 전송 실패:", err)
-		} else {
-			fmt.Println("[Kafka: Balance] 결과 메시지 전송 완료:", string(encoded))
-		}
-
-		session.MarkMessage(msg, "")
 	}
 	return nil
 }

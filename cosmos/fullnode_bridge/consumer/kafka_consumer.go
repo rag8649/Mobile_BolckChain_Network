@@ -5,11 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/cosmos/cosmos-sdk/fullnode_bridge/producer"
 	"github.com/cosmos/cosmos-sdk/fullnode_bridge/tx"
 	"github.com/cosmos/cosmos-sdk/fullnode_bridge/types"
 
@@ -43,7 +43,6 @@ var (
 
 var SentLatLng = make(map[string]bool) // 중복 전송 방지용
 var RewardWeight = make(map[string]float64)
-var KafkaProducerLatLng sarama.SyncProducer // 위도경도 전송용 프로듀서
 
 type Location struct { // 오라클에 전달하는 위치 값
 	Latitude  float64 `json:"latitude"`
@@ -64,28 +63,6 @@ type MemberRewardOutputMessage struct {
 
 type VoteMemberMsg struct {
 	Count int `json:"count"`
-}
-
-var KafkaProducerDevice sarama.SyncProducer // 디바이스 정보 전송 프로듀서
-var KafkaProducerVMember sarama.SyncProducer
-
-func InitProducer() {
-	KafkaProducerDevice = NewKafkaSyncProducer(config.KafkaBrokers)
-	KafkaProducerLatLng = NewKafkaSyncProducer(config.KafkaBrokers)
-	KafkaProducerVMember = NewKafkaSyncProducer(config.KafkaBrokers)
-}
-
-func NewKafkaSyncProducer(brokers []string) sarama.SyncProducer { // 프로듀서 초기화
-	config := sarama.NewConfig()
-	config.Producer.RequiredAcks = sarama.WaitForAll
-	config.Producer.Retry.Max = 5
-	config.Producer.Return.Successes = true
-
-	producer, err := sarama.NewSyncProducer(brokers, config)
-	if err != nil {
-		log.Fatalf("Kafka 프로듀서 생성 실패: %v", err)
-	}
-	return producer
 }
 
 func (h *lightTxHandler) Setup(_ sarama.ConsumerGroupSession) error   { return nil }
@@ -156,6 +133,10 @@ func (h *lightTxHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 
 		// 👉 새로운 해시에 대해서만 goroutine 실행
 		if len(VoteMap[txMsg.Hash]) == 1 {
+			if err := requestDeviceAddress(producer.KafkaProducerDevice, DeviceID[txMsg.Hash]); err != nil {
+				fmt.Println("주소 요청 실패:", err)
+			}
+
 			go startVoteTimer(txMsg.Hash)
 		}
 		VoteMutex.Unlock()
@@ -199,7 +180,7 @@ func sendLocationToKafka(hash string, loc Location, senderID string) {
 	}
 	msgBytes, _ := json.Marshal(payload)
 
-	_, _, err := KafkaProducerLatLng.SendMessage(&sarama.ProducerMessage{
+	_, _, err := producer.KafkaProducerLatLng.SendMessage(&sarama.ProducerMessage{
 		Topic: config.TopicLocationProducer,
 		Value: sarama.ByteEncoder(msgBytes),
 	})
@@ -245,31 +226,19 @@ func startVoteTimer(hash string) {
 
 			SendValidatorMembers(uniqueList) // 서명자 보상 함수
 
-			// 보상 로직
-			deviceId := DeviceID[hash]
-			if err := requestDeviceAddress(KafkaProducerDevice, deviceId); err != nil {
-				fmt.Println("주소 요청 실패:", err)
+			if addr, ok := deviceAddressMap.Load(DeviceID[txMsg.Hash]); ok {
+				userAddress := addr.(string) // 타입 단언
+				if txMsg.Original != nil {
+					fmt.Printf("[Kafka: Solar data] 발전량 보상 지급 시작\n")
+					tx.SendRewardTxSafely(userAddress, txMsg.Original.TotalEnergy+txMsg.Original.TotalEnergy*RewardWeight[hash], true)
+				} else if txMsg.REC != nil {
+					mwh, err := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
+					if err == nil {
+						tx.SendRewardTxSafely(userAddress, mwh*1000000, true) // MWh → Wh
+					}
+				}
 			} else {
-				var userAddress string
-				for i := 0; i < 50; i++ {
-					if val, ok := deviceAddressMap.Load(deviceId); ok {
-						userAddress = val.(string)
-						break
-					}
-					time.Sleep(100 * time.Millisecond)
-				}
-
-				if userAddress != "" {
-					if txMsg.Original != nil {
-						tx.SendRewardTxSafely(userAddress, txMsg.Original.TotalEnergy+txMsg.Original.TotalEnergy*RewardWeight[hash])
-					} else if txMsg.REC != nil {
-						mwh, err := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
-						if err == nil {
-							tx.SendRewardTxSafely(userAddress, mwh*1000000) // MWh → Wh
-						}
-					}
-				}
-
+				fmt.Printf("[Kafka: Solar data] 주소 비어있음\n")
 			}
 		}
 	}
@@ -377,7 +346,7 @@ func SendValidatorMembers(uniqueList []string) error {
 	}
 
 	// 전송
-	_, _, err = KafkaProducerVMember.SendMessage(kafkaMsg)
+	_, _, err = producer.KafkaProducerVMember.SendMessage(kafkaMsg)
 	if err != nil {
 		return fmt.Errorf("VMember 메시지 전송 실패: %w", err)
 	}
@@ -424,7 +393,7 @@ func StartVMemberConsumer() {
 			// ✅ Rewards 맵 순회하면서 트랜잭션 전송
 			for addr, reward := range outputMsg.Rewards {
 				fmt.Printf("[Kafka: Member Reward] 서명자 보상 지급 시작 → 주소: %s, 보상: %f\n", addr, reward)
-				if err := tx.SendRewardTxSafely(addr, reward); err != nil {
+				if err := tx.SendRewardTxSafely(addr, reward, false); err != nil {
 					fmt.Printf("[Kafka: Member Reward] 보상 트랜잭션 실패 (addr=%s): %v\n", addr, err)
 				}
 			}
@@ -487,7 +456,7 @@ func StartSolarKafkaConsumer() {
 	saramaConfig.Consumer.Offsets.Initial = sarama.OffsetNewest
 
 	consumerGroup, err := sarama.NewConsumerGroup(brokers, groupID, saramaConfig)
-	InitProducer()
+	producer.InitProducer()
 	if err != nil {
 		panic(fmt.Sprintf("[Kafka: Solar data] ConsumerGroup 생성 실패: %v", err))
 	}

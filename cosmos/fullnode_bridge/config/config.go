@@ -18,8 +18,9 @@ var (
 	TopicRequestMemberCount     = "request-user-count-topic"
 	TopicLocationProducer       = "request-location-topic"
 	TopicAccountResult          = "result-account-topic" // 회원가입 후 잔액 메세지 토픽
-	TopicBalanceResult          = "result-balance-topic" // 잔고 전송 토픽
+	TopicBalanceResult          = "balance-topic"        // 잔고 전송 토픽
 	TopicRequestVMemberReward   = "request-vote-member-topic"
+	TopicTxHash                 = "tx-hash-topic" // 트랜잭션 해시 전송 토픽
 
 	//Group
 	TopicLightTxGroup         = "light-tx-group"
