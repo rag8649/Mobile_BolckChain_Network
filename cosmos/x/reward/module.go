@@ -1,6 +1,7 @@
 package reward
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/cosmos/cosmos-sdk/client"
@@ -17,6 +18,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/spf13/cobra"
 	abci "github.com/tendermint/tendermint/abci/types"
+	"google.golang.org/grpc"
 )
 
 // -----------------------
@@ -52,8 +54,32 @@ func (AppModuleBasic) ValidateGenesis(cdc codec.JSONCodec, _ client.TxEncodingCo
 	return nil
 }
 
-func (AppModuleBasic) RegisterRESTRoutes(_ client.Context, _ *mux.Router)              {}
-func (AppModuleBasic) RegisterGRPCGatewayRoutes(_ client.Context, _ *runtime.ServeMux) {}
+func (AppModuleBasic) RegisterRESTRoutes(_ client.Context, _ *mux.Router) {}
+
+func (AppModuleBasic) RegisterGRPCGatewayRoutes(clientCtx client.Context, mux *runtime.ServeMux) {
+	// gRPC 주소는 CLI flag 또는 기본값 사용
+	grpcAddr := clientCtx.Viper.GetString("grpc-address")
+	if grpcAddr == "" {
+		grpcAddr = "127.0.0.1:9090"
+	}
+
+	// gRPC 연결 생성
+	conn, err := grpc.Dial(
+		grpcAddr,
+		grpc.WithInsecure(),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	if err := types.RegisterQueryHandlerClient(
+		context.Background(),
+		mux,
+		types.NewQueryClient(conn), // ✅ conn 넘기기
+	); err != nil {
+		panic(err)
+	}
+}
 
 func (AppModuleBasic) GetTxCmd() *cobra.Command {
 	return cli.NewTxCmd()
@@ -86,7 +112,9 @@ func (AppModule) ConsensusVersion() uint64 {
 }
 
 func (am AppModule) RegisterServices(cfg module.Configurator) {
-	// gRPC 서비스를 등록하지 않는 경우, 이 메서드는 비워두어도 됩니다.
+
+	types.RegisterMsgServer(cfg.MsgServer(), keeper.NewMsgServerImpl(am.keeper))
+	types.RegisterQueryServer(cfg.QueryServer(), keeper.Querier{Keeper: am.keeper})
 }
 
 func (am AppModule) Name() string {
@@ -110,9 +138,9 @@ func (am AppModule) InitGenesis(ctx sdk.Context, cdc codec.JSONCodec, data json.
 	if account == nil {
 		moduleAcc := authtypes.NewEmptyModuleAccount(types.ModuleName, authtypes.Minter)
 		am.accountKeeper.SetModuleAccount(ctx, moduleAcc)
-		logger.Info("✅ Reward 모듈 계정 생성 완료", "module", types.ModuleName)
+		logger.Info("Reward 모듈 계정 생성 완료", "module", types.ModuleName)
 	} else {
-		logger.Info("ℹ️ Reward 모듈 계정이 이미 존재함", "module", types.ModuleName)
+		logger.Info("Reward 모듈 계정이 이미 존재함", "module", types.ModuleName)
 	}
 
 	return []abci.ValidatorUpdate{}

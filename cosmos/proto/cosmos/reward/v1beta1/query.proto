@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package cosmos.reward.v1beta1;
+
+option go_package = "github.com/cosmos/cosmos-sdk/x/reward/types";
+
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+
+option (gogoproto.equal_all)       = true;
+option (gogoproto.marshaler_all)   = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.sizer_all)       = true;
+
+// ----------------------
+// 데이터 구조체
+// ----------------------
+
+// 전체 담보 총량만 관리
+message Collateral {
+  string amount = 1 [(gogoproto.moretags) = "yaml:\"amount\""];
+}
+
+// 발행량 기록
+message Supply {
+  string minted = 1 [(gogoproto.moretags) = "yaml:\"minted\""];
+}
+
+// ----------------------
+// Query service
+// ----------------------
+service Query {
+  // 담보 총량 조회
+  rpc Collateral(QueryCollateralRequest) returns (QueryCollateralResponse) {
+    option (google.api.http).get = "/cosmos/reward/v1beta1/collateral";
+  }
+
+  // 발행량 조회
+  rpc Supply(QuerySupplyRequest) returns (QuerySupplyResponse) {
+    option (google.api.http).get = "/cosmos/reward/v1beta1/supply";
+  }
+}
+
+// ----------------------
+// Query messages
+// ----------------------
+message QueryCollateralRequest {}
+
+message QueryCollateralResponse {
+  string total_amount = 1;  // 전체 담보량 (stake 단위 총합)
+}
+
+message QuerySupplyRequest {}
+
+message QuerySupplyResponse {
+  Supply supply = 1 [(gogoproto.nullable) = false];
+}

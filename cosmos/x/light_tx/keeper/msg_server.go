@@ -2,6 +2,8 @@ package keeper
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors" // 👈 이 줄 추가
@@ -42,6 +44,10 @@ func (k msgServer) SendLightTx(goCtx context.Context, msg *lighttype.MsgSendLigh
 				sdk.NewAttribute("device_id", data.DeviceId),
 				sdk.NewAttribute("hash", msg.Hash),
 				sdk.NewAttribute("signature", msg.Signature),
+				sdk.NewAttribute("timestamp", data.Timestamp),
+				sdk.NewAttribute("total_energy", fmt.Sprintf("%f", data.TotalEnergy)),
+				sdk.NewAttribute("latitude", fmt.Sprintf("%f", data.Location.Latitude)),
+				sdk.NewAttribute("longitude", fmt.Sprintf("%f", data.Location.Longitude)),
 			),
 		)
 
@@ -69,12 +75,11 @@ func (k msgServer) SendLightTx(goCtx context.Context, msg *lighttype.MsgSendLigh
 			"pubkey", msg.Pubkey,
 		)
 
+		b, _ := json.Marshal(data) // 🔹 여기서 b를 생성
+
 		ctx.EventManager().EmitEvent(
-			sdk.NewEvent("light_tx_rec",
-				sdk.NewAttribute("creator", msg.Creator),
-				sdk.NewAttribute("facility_id", data.FacilityId),
-				sdk.NewAttribute("hash", msg.Hash),
-				sdk.NewAttribute("signature", msg.Signature),
+			sdk.NewEvent("light_tx_solar",
+				sdk.NewAttribute("payload", string(b)),
 			),
 		)
 

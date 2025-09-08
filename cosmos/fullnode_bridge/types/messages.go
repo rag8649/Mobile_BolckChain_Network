@@ -29,7 +29,7 @@ type RECMeta struct {
 	RegistrationDate string `json:"registration_date"` // i-REC 등록 승인일
 
 	CertifiedId         string `json:"certified_id"`
-	IssueData           string `json:"issue_data"`
+	IssueDate           string `json:"issue_date"`
 	GenerationStartDate string `json:"generation_start_date"`
 	GenerationEndDate   string `json:"generation_end_date"`
 	MeasuredVolumeMWh   string `json:"measured_volume_MWh"`
@@ -58,4 +58,13 @@ type BalanceResult struct {
 type TxHashResult struct {
 	Address string `json:"address"`
 	Hash    string `json:"hash"`
+}
+
+type CollateralMessage struct {
+	REC string `json:"rec"`
+}
+
+type BurnMessage struct {
+	Address string `json:"address"`
+	Stable  string `json:"stable"`
 }

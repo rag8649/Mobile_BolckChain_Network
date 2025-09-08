@@ -156,7 +156,8 @@ var (
 		stakingtypes.BondedPoolName:    {authtypes.Burner, authtypes.Staking},
 		stakingtypes.NotBondedPoolName: {authtypes.Burner, authtypes.Staking},
 		govtypes.ModuleName:            {authtypes.Burner},
-		rewardtypes.ModuleName:         {authtypes.Minter},
+		// rewardtypes.ModuleName:         {authtypes.Minter, authtypes.Burner},
+		rewardtypes.ModuleName: rewardtypes.ModulePerms,
 	}
 )
 

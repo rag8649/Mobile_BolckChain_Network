@@ -35,7 +35,7 @@ func (h *accountHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 		fmt.Println("[Kafka: Account] 주소 활성화 요청:", authMsg.Address)
 
 		// 1 stake 송금
-		_, err := tx.SendStakeToAddress(authMsg.Address)
+		_, err := tx.UserCheck(authMsg.Address)
 		if err != nil {
 			fmt.Println("[Kafka: Account] 송금 실패:", err)
 			continue
@@ -68,7 +68,7 @@ func (h *accountHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 		// 필요한 잔액(예: stake)만 추출
 		var stakeAmount string
 		for _, b := range balanceResult.Balances {
-			if b.Denom == "stake" {
+			if b.Denom == "stable" {
 				stakeAmount = b.Amount
 				break
 			}

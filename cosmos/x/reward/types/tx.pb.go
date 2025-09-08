@@ -27,7 +27,7 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-// 메시지 정의
+// 보상 (발행)
 type MsgRewardSolarPower struct {
 	Creator              string   `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
 	Address              string   `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
@@ -82,6 +82,184 @@ func (m *MsgRewardSolarPower) GetAmount() string {
 	return ""
 }
 
+// 소각
+type MsgBurnStableCoin struct {
+	Creator              string   `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
+	TargetAddr           string   `protobuf:"bytes,2,opt,name=target_addr,json=targetAddr,proto3" json:"target_addr,omitempty"`
+	Amount               string   `protobuf:"bytes,3,opt,name=amount,proto3" json:"amount,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *MsgBurnStableCoin) Reset()         { *m = MsgBurnStableCoin{} }
+func (m *MsgBurnStableCoin) String() string { return proto.CompactTextString(m) }
+func (*MsgBurnStableCoin) ProtoMessage()    {}
+func (*MsgBurnStableCoin) Descriptor() ([]byte, []int) {
+	return fileDescriptor_4fab18f39c554771, []int{1}
+}
+func (m *MsgBurnStableCoin) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_MsgBurnStableCoin.Unmarshal(m, b)
+}
+func (m *MsgBurnStableCoin) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_MsgBurnStableCoin.Marshal(b, m, deterministic)
+}
+func (m *MsgBurnStableCoin) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgBurnStableCoin.Merge(m, src)
+}
+func (m *MsgBurnStableCoin) XXX_Size() int {
+	return xxx_messageInfo_MsgBurnStableCoin.Size(m)
+}
+func (m *MsgBurnStableCoin) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgBurnStableCoin.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgBurnStableCoin proto.InternalMessageInfo
+
+func (m *MsgBurnStableCoin) GetCreator() string {
+	if m != nil {
+		return m.Creator
+	}
+	return ""
+}
+
+func (m *MsgBurnStableCoin) GetTargetAddr() string {
+	if m != nil {
+		return m.TargetAddr
+	}
+	return ""
+}
+
+func (m *MsgBurnStableCoin) GetAmount() string {
+	if m != nil {
+		return m.Amount
+	}
+	return ""
+}
+
+type MsgDepositCollateral struct {
+	Creator              string   `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
+	Amount               string   `protobuf:"bytes,2,opt,name=amount,proto3" json:"amount,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *MsgDepositCollateral) Reset()         { *m = MsgDepositCollateral{} }
+func (m *MsgDepositCollateral) String() string { return proto.CompactTextString(m) }
+func (*MsgDepositCollateral) ProtoMessage()    {}
+func (*MsgDepositCollateral) Descriptor() ([]byte, []int) {
+	return fileDescriptor_4fab18f39c554771, []int{2}
+}
+func (m *MsgDepositCollateral) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_MsgDepositCollateral.Unmarshal(m, b)
+}
+func (m *MsgDepositCollateral) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_MsgDepositCollateral.Marshal(b, m, deterministic)
+}
+func (m *MsgDepositCollateral) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgDepositCollateral.Merge(m, src)
+}
+func (m *MsgDepositCollateral) XXX_Size() int {
+	return xxx_messageInfo_MsgDepositCollateral.Size(m)
+}
+func (m *MsgDepositCollateral) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgDepositCollateral.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgDepositCollateral proto.InternalMessageInfo
+
+func (m *MsgDepositCollateral) GetCreator() string {
+	if m != nil {
+		return m.Creator
+	}
+	return ""
+}
+
+func (m *MsgDepositCollateral) GetAmount() string {
+	if m != nil {
+		return m.Amount
+	}
+	return ""
+}
+
+// 담보 삭제
+type MsgRemoveCollateral struct {
+	Creator              string   `protobuf:"bytes,1,opt,name=creator,proto3" json:"creator,omitempty"`
+	Amount               string   `protobuf:"bytes,2,opt,name=amount,proto3" json:"amount,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *MsgRemoveCollateral) Reset()         { *m = MsgRemoveCollateral{} }
+func (m *MsgRemoveCollateral) String() string { return proto.CompactTextString(m) }
+func (*MsgRemoveCollateral) ProtoMessage()    {}
+func (*MsgRemoveCollateral) Descriptor() ([]byte, []int) {
+	return fileDescriptor_4fab18f39c554771, []int{3}
+}
+func (m *MsgRemoveCollateral) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_MsgRemoveCollateral.Unmarshal(m, b)
+}
+func (m *MsgRemoveCollateral) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_MsgRemoveCollateral.Marshal(b, m, deterministic)
+}
+func (m *MsgRemoveCollateral) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgRemoveCollateral.Merge(m, src)
+}
+func (m *MsgRemoveCollateral) XXX_Size() int {
+	return xxx_messageInfo_MsgRemoveCollateral.Size(m)
+}
+func (m *MsgRemoveCollateral) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgRemoveCollateral.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgRemoveCollateral proto.InternalMessageInfo
+
+func (m *MsgRemoveCollateral) GetCreator() string {
+	if m != nil {
+		return m.Creator
+	}
+	return ""
+}
+
+func (m *MsgRemoveCollateral) GetAmount() string {
+	if m != nil {
+		return m.Amount
+	}
+	return ""
+}
+
+type MsgRemoveCollateralResponse struct {
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *MsgRemoveCollateralResponse) Reset()         { *m = MsgRemoveCollateralResponse{} }
+func (m *MsgRemoveCollateralResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgRemoveCollateralResponse) ProtoMessage()    {}
+func (*MsgRemoveCollateralResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_4fab18f39c554771, []int{4}
+}
+func (m *MsgRemoveCollateralResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_MsgRemoveCollateralResponse.Unmarshal(m, b)
+}
+func (m *MsgRemoveCollateralResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_MsgRemoveCollateralResponse.Marshal(b, m, deterministic)
+}
+func (m *MsgRemoveCollateralResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgRemoveCollateralResponse.Merge(m, src)
+}
+func (m *MsgRemoveCollateralResponse) XXX_Size() int {
+	return xxx_messageInfo_MsgRemoveCollateralResponse.Size(m)
+}
+func (m *MsgRemoveCollateralResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgRemoveCollateralResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgRemoveCollateralResponse proto.InternalMessageInfo
+
 type MsgRewardSolarPowerResponse struct {
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -92,7 +270,7 @@ func (m *MsgRewardSolarPowerResponse) Reset()         { *m = MsgRewardSolarPower
 func (m *MsgRewardSolarPowerResponse) String() string { return proto.CompactTextString(m) }
 func (*MsgRewardSolarPowerResponse) ProtoMessage()    {}
 func (*MsgRewardSolarPowerResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_4fab18f39c554771, []int{1}
+	return fileDescriptor_4fab18f39c554771, []int{5}
 }
 func (m *MsgRewardSolarPowerResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_MsgRewardSolarPowerResponse.Unmarshal(m, b)
@@ -112,32 +290,111 @@ func (m *MsgRewardSolarPowerResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_MsgRewardSolarPowerResponse proto.InternalMessageInfo
 
+type MsgBurnStableCoinResponse struct {
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *MsgBurnStableCoinResponse) Reset()         { *m = MsgBurnStableCoinResponse{} }
+func (m *MsgBurnStableCoinResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgBurnStableCoinResponse) ProtoMessage()    {}
+func (*MsgBurnStableCoinResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_4fab18f39c554771, []int{6}
+}
+func (m *MsgBurnStableCoinResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_MsgBurnStableCoinResponse.Unmarshal(m, b)
+}
+func (m *MsgBurnStableCoinResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_MsgBurnStableCoinResponse.Marshal(b, m, deterministic)
+}
+func (m *MsgBurnStableCoinResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgBurnStableCoinResponse.Merge(m, src)
+}
+func (m *MsgBurnStableCoinResponse) XXX_Size() int {
+	return xxx_messageInfo_MsgBurnStableCoinResponse.Size(m)
+}
+func (m *MsgBurnStableCoinResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgBurnStableCoinResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgBurnStableCoinResponse proto.InternalMessageInfo
+
+type MsgDepositCollateralResponse struct {
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *MsgDepositCollateralResponse) Reset()         { *m = MsgDepositCollateralResponse{} }
+func (m *MsgDepositCollateralResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgDepositCollateralResponse) ProtoMessage()    {}
+func (*MsgDepositCollateralResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_4fab18f39c554771, []int{7}
+}
+func (m *MsgDepositCollateralResponse) XXX_Unmarshal(b []byte) error {
+	return xxx_messageInfo_MsgDepositCollateralResponse.Unmarshal(m, b)
+}
+func (m *MsgDepositCollateralResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	return xxx_messageInfo_MsgDepositCollateralResponse.Marshal(b, m, deterministic)
+}
+func (m *MsgDepositCollateralResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgDepositCollateralResponse.Merge(m, src)
+}
+func (m *MsgDepositCollateralResponse) XXX_Size() int {
+	return xxx_messageInfo_MsgDepositCollateralResponse.Size(m)
+}
+func (m *MsgDepositCollateralResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgDepositCollateralResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgDepositCollateralResponse proto.InternalMessageInfo
+
 func init() {
 	proto.RegisterType((*MsgRewardSolarPower)(nil), "cosmos.reward.v1beta1.MsgRewardSolarPower")
+	proto.RegisterType((*MsgBurnStableCoin)(nil), "cosmos.reward.v1beta1.MsgBurnStableCoin")
+	proto.RegisterType((*MsgDepositCollateral)(nil), "cosmos.reward.v1beta1.MsgDepositCollateral")
+	proto.RegisterType((*MsgRemoveCollateral)(nil), "cosmos.reward.v1beta1.MsgRemoveCollateral")
+	proto.RegisterType((*MsgRemoveCollateralResponse)(nil), "cosmos.reward.v1beta1.MsgRemoveCollateralResponse")
 	proto.RegisterType((*MsgRewardSolarPowerResponse)(nil), "cosmos.reward.v1beta1.MsgRewardSolarPowerResponse")
+	proto.RegisterType((*MsgBurnStableCoinResponse)(nil), "cosmos.reward.v1beta1.MsgBurnStableCoinResponse")
+	proto.RegisterType((*MsgDepositCollateralResponse)(nil), "cosmos.reward.v1beta1.MsgDepositCollateralResponse")
 }
 
 func init() { proto.RegisterFile("cosmos/reward/v1beta1/tx.proto", fileDescriptor_4fab18f39c554771) }
 
 var fileDescriptor_4fab18f39c554771 = []byte{
-	// 271 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x90, 0xbd, 0x4e, 0xf3, 0x30,
-	0x14, 0x86, 0xe5, 0x46, 0xea, 0xa7, 0xcf, 0x13, 0x0a, 0x02, 0x45, 0xe5, 0x47, 0x28, 0x13, 0xb4,
-	0xaa, 0xad, 0x96, 0xad, 0x23, 0x7b, 0x25, 0x14, 0x36, 0x96, 0xea, 0x24, 0xb1, 0x4c, 0x44, 0xe3,
-	0x63, 0xf9, 0xb8, 0xb4, 0xac, 0xdc, 0x02, 0xf7, 0xc1, 0xc8, 0x8d, 0x70, 0x0b, 0x5c, 0x08, 0x4a,
-	0x9c, 0x4c, 0x64, 0x60, 0xb2, 0x5e, 0x3d, 0x7e, 0xce, 0xb1, 0x5f, 0x7e, 0x59, 0x20, 0xd5, 0x48,
-	0xd2, 0xa9, 0x3d, 0xb8, 0x52, 0xbe, 0x2c, 0x72, 0xe5, 0x61, 0x21, 0xfd, 0x41, 0x58, 0x87, 0x1e,
-	0xe3, 0x93, 0xc0, 0x45, 0xe0, 0xa2, 0xe3, 0x93, 0x73, 0x8d, 0xa8, 0xb7, 0x4a, 0x82, 0xad, 0x24,
-	0x18, 0x83, 0x1e, 0x7c, 0x85, 0x86, 0x82, 0x94, 0x02, 0x3f, 0x5e, 0x93, 0xce, 0x5a, 0xe5, 0x01,
-	0xb7, 0xe0, 0xee, 0x71, 0xaf, 0x5c, 0x9c, 0xf0, 0x7f, 0x85, 0x53, 0xe0, 0xd1, 0x25, 0xec, 0x8a,
-	0x5d, 0xff, 0xcf, 0xfa, 0xd8, 0x10, 0x28, 0x4b, 0xa7, 0x88, 0x92, 0x51, 0x20, 0x5d, 0x8c, 0x4f,
-	0xf9, 0x18, 0x6a, 0xdc, 0x19, 0x9f, 0x44, 0x2d, 0xe8, 0x52, 0x7a, 0xc1, 0xcf, 0x06, 0x56, 0x64,
-	0x8a, 0x2c, 0x1a, 0x52, 0xcb, 0x4f, 0xc6, 0xa3, 0x35, 0xe9, 0xf8, 0x83, 0xf1, 0xa3, 0x5f, 0xef,
-	0x98, 0x8a, 0xc1, 0x4f, 0x89, 0x81, 0x81, 0x93, 0xe5, 0xdf, 0xef, 0xf6, 0xcb, 0xd3, 0xd5, 0xdb,
-	0xd7, 0xf7, 0xfb, 0x68, 0x96, 0xde, 0xc8, 0xe1, 0x72, 0x43, 0xdc, 0x50, 0x63, 0x6e, 0x6c, 0xa3,
-	0xb6, 0x42, 0xb4, 0x62, 0xd3, 0xbb, 0xf9, 0xe3, 0x4c, 0x57, 0xfe, 0x69, 0x97, 0x8b, 0x02, 0xeb,
-	0xde, 0x0f, 0xc7, 0x9c, 0xca, 0x67, 0x79, 0xe8, 0x87, 0xf9, 0x57, 0xab, 0x28, 0x1f, 0xb7, 0x85,
-	0xdf, 0xfe, 0x04, 0x00, 0x00, 0xff, 0xff, 0xa8, 0x7a, 0x95, 0xac, 0xc7, 0x01, 0x00, 0x00,
+	// 465 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xa4, 0x54, 0x4d, 0x6e, 0xd3, 0x40,
+	0x14, 0x96, 0x13, 0x51, 0xc4, 0x20, 0x21, 0x6a, 0x7e, 0x14, 0xd2, 0x52, 0x90, 0x37, 0xa4, 0x89,
+	0x6a, 0xd3, 0x76, 0x03, 0xdd, 0xd1, 0x22, 0xc1, 0x26, 0x12, 0x4a, 0x77, 0x6c, 0xac, 0xb1, 0x3d,
+	0x0c, 0x16, 0xf6, 0x3c, 0x6b, 0xde, 0xb8, 0x2d, 0x5b, 0xae, 0xc0, 0x1d, 0xd8, 0x81, 0xc4, 0x19,
+	0x38, 0x02, 0x57, 0xe0, 0x20, 0xc8, 0x33, 0xb6, 0x23, 0xd7, 0x3f, 0x0a, 0x62, 0x15, 0xbd, 0x7c,
+	0xef, 0xfb, 0xf1, 0xf3, 0x27, 0x93, 0xbd, 0x10, 0x30, 0x05, 0xf4, 0x24, 0xbb, 0xa4, 0x32, 0xf2,
+	0x2e, 0x0e, 0x03, 0xa6, 0xe8, 0xa1, 0xa7, 0xae, 0xdc, 0x4c, 0x82, 0x02, 0xfb, 0x81, 0xc1, 0x5d,
+	0x83, 0xbb, 0x25, 0x3e, 0xdd, 0xe5, 0x00, 0x3c, 0x61, 0x1e, 0xcd, 0x62, 0x8f, 0x0a, 0x01, 0x8a,
+	0xaa, 0x18, 0x04, 0x1a, 0x92, 0x43, 0xc9, 0xbd, 0x25, 0xf2, 0x95, 0xa6, 0x9c, 0x43, 0x42, 0xe5,
+	0x3b, 0xb8, 0x64, 0xd2, 0x9e, 0x90, 0x9b, 0xa1, 0x64, 0x54, 0x81, 0x9c, 0x58, 0x4f, 0xad, 0xd9,
+	0xad, 0x55, 0x35, 0x16, 0x08, 0x8d, 0x22, 0xc9, 0x10, 0x27, 0x23, 0x83, 0x94, 0xa3, 0xfd, 0x90,
+	0x6c, 0xd1, 0x14, 0x72, 0xa1, 0x26, 0x63, 0x0d, 0x94, 0x93, 0xf3, 0x81, 0x6c, 0x2f, 0x91, 0x9f,
+	0xe6, 0x52, 0x9c, 0x2b, 0x1a, 0x24, 0xec, 0x0c, 0x62, 0x31, 0x60, 0xf0, 0x84, 0xdc, 0x56, 0x54,
+	0x72, 0xa6, 0xfc, 0x42, 0xb8, 0x34, 0x21, 0xe6, 0xaf, 0x57, 0x51, 0x24, 0x7b, 0x7d, 0xde, 0x92,
+	0xfb, 0x4b, 0xe4, 0xaf, 0x59, 0x06, 0x18, 0xab, 0x33, 0x48, 0x12, 0xaa, 0x98, 0xa4, 0xc9, 0x80,
+	0xd5, 0x5a, 0x69, 0xd4, 0x50, 0x7a, 0x53, 0x1e, 0x25, 0x85, 0x0b, 0xf6, 0x5f, 0x42, 0x8f, 0xc9,
+	0x4e, 0x87, 0xd0, 0x8a, 0x61, 0x06, 0x02, 0x59, 0x0d, 0x37, 0x8f, 0x5f, 0xc3, 0x3b, 0xe4, 0x51,
+	0xeb, 0x70, 0x35, 0xb8, 0x47, 0x76, 0xbb, 0x9e, 0xb6, 0xc2, 0x8f, 0x7e, 0xdd, 0x20, 0xe3, 0x25,
+	0x72, 0xfb, 0x87, 0x45, 0xee, 0xb6, 0x5e, 0xef, 0xdc, 0xed, 0xec, 0x8a, 0xdb, 0x91, 0x66, 0x7a,
+	0xb4, 0xf9, 0x6e, 0x1d, 0xee, 0xe4, 0xcb, 0xef, 0x3f, 0x5f, 0x47, 0x0b, 0x67, 0xdf, 0xeb, 0xee,
+	0xac, 0x19, 0x7d, 0x2c, 0x98, 0x7e, 0x56, 0x50, 0x35, 0x61, 0x7c, 0x62, 0xcd, 0xed, 0x6f, 0x16,
+	0xb9, 0x73, 0xad, 0x2c, 0xb3, 0xfe, 0x08, 0xcd, 0xcd, 0xe9, 0xf3, 0x4d, 0x37, 0xeb, 0xa8, 0x2f,
+	0xb4, 0xf3, 0xbe, 0xf3, 0xac, 0x27, 0x6a, 0x90, 0x4b, 0xe1, 0xa3, 0xe6, 0xf9, 0x21, 0xc4, 0x62,
+	0x1d, 0xf4, 0xa7, 0x45, 0xb6, 0xdb, 0x6d, 0x5b, 0xf4, 0x27, 0x68, 0x2d, 0x4f, 0x8f, 0xff, 0x61,
+	0x79, 0xe3, 0xe3, 0x46, 0x86, 0xe9, 0x87, 0x35, 0x75, 0x9d, 0xf9, 0xbb, 0x6e, 0xc3, 0xb5, 0x5e,
+	0x0f, 0xb6, 0xa1, 0xb9, 0x3b, 0xdc, 0x86, 0x9e, 0x9a, 0xbf, 0xd4, 0xfe, 0x73, 0x67, 0xd6, 0xdb,
+	0x86, 0x82, 0xd8, 0x95, 0xf7, 0xf4, 0xe0, 0xfd, 0x82, 0xc7, 0xea, 0x63, 0x1e, 0xb8, 0x21, 0xa4,
+	0x15, 0xdd, 0xfc, 0x1c, 0x60, 0xf4, 0xc9, 0xbb, 0xaa, 0xb4, 0xd4, 0xe7, 0x8c, 0x61, 0xb0, 0xa5,
+	0x3f, 0x6a, 0xc7, 0x7f, 0x03, 0x00, 0x00, 0xff, 0xff, 0xb4, 0x50, 0x23, 0x2c, 0x2b, 0x05, 0x00,
+	0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -153,6 +410,12 @@ const _ = grpc.SupportPackageIsVersion4
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type MsgClient interface {
 	RewardSolarPower(ctx context.Context, in *MsgRewardSolarPower, opts ...grpc.CallOption) (*MsgRewardSolarPowerResponse, error)
+	// 🔥 소각 메세지 추가
+	BurnStableCoin(ctx context.Context, in *MsgBurnStableCoin, opts ...grpc.CallOption) (*MsgBurnStableCoinResponse, error)
+	// 담보 예치
+	DepositCollateral(ctx context.Context, in *MsgDepositCollateral, opts ...grpc.CallOption) (*MsgDepositCollateralResponse, error)
+	// 🔥 담보 제거
+	RemoveCollateral(ctx context.Context, in *MsgRemoveCollateral, opts ...grpc.CallOption) (*MsgRemoveCollateralResponse, error)
 }
 
 type msgClient struct {
@@ -172,9 +435,42 @@ func (c *msgClient) RewardSolarPower(ctx context.Context, in *MsgRewardSolarPowe
 	return out, nil
 }
 
+func (c *msgClient) BurnStableCoin(ctx context.Context, in *MsgBurnStableCoin, opts ...grpc.CallOption) (*MsgBurnStableCoinResponse, error) {
+	out := new(MsgBurnStableCoinResponse)
+	err := c.cc.Invoke(ctx, "/cosmos.reward.v1beta1.Msg/BurnStableCoin", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) DepositCollateral(ctx context.Context, in *MsgDepositCollateral, opts ...grpc.CallOption) (*MsgDepositCollateralResponse, error) {
+	out := new(MsgDepositCollateralResponse)
+	err := c.cc.Invoke(ctx, "/cosmos.reward.v1beta1.Msg/DepositCollateral", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *msgClient) RemoveCollateral(ctx context.Context, in *MsgRemoveCollateral, opts ...grpc.CallOption) (*MsgRemoveCollateralResponse, error) {
+	out := new(MsgRemoveCollateralResponse)
+	err := c.cc.Invoke(ctx, "/cosmos.reward.v1beta1.Msg/RemoveCollateral", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MsgServer is the server API for Msg service.
 type MsgServer interface {
 	RewardSolarPower(context.Context, *MsgRewardSolarPower) (*MsgRewardSolarPowerResponse, error)
+	// 🔥 소각 메세지 추가
+	BurnStableCoin(context.Context, *MsgBurnStableCoin) (*MsgBurnStableCoinResponse, error)
+	// 담보 예치
+	DepositCollateral(context.Context, *MsgDepositCollateral) (*MsgDepositCollateralResponse, error)
+	// 🔥 담보 제거
+	RemoveCollateral(context.Context, *MsgRemoveCollateral) (*MsgRemoveCollateralResponse, error)
 }
 
 // UnimplementedMsgServer can be embedded to have forward compatible implementations.
@@ -183,6 +479,15 @@ type UnimplementedMsgServer struct {
 
 func (*UnimplementedMsgServer) RewardSolarPower(ctx context.Context, req *MsgRewardSolarPower) (*MsgRewardSolarPowerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RewardSolarPower not implemented")
+}
+func (*UnimplementedMsgServer) BurnStableCoin(ctx context.Context, req *MsgBurnStableCoin) (*MsgBurnStableCoinResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method BurnStableCoin not implemented")
+}
+func (*UnimplementedMsgServer) DepositCollateral(ctx context.Context, req *MsgDepositCollateral) (*MsgDepositCollateralResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DepositCollateral not implemented")
+}
+func (*UnimplementedMsgServer) RemoveCollateral(ctx context.Context, req *MsgRemoveCollateral) (*MsgRemoveCollateralResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RemoveCollateral not implemented")
 }
 
 func RegisterMsgServer(s grpc1.Server, srv MsgServer) {
@@ -207,6 +512,60 @@ func _Msg_RewardSolarPower_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Msg_BurnStableCoin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgBurnStableCoin)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).BurnStableCoin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cosmos.reward.v1beta1.Msg/BurnStableCoin",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).BurnStableCoin(ctx, req.(*MsgBurnStableCoin))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_DepositCollateral_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgDepositCollateral)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).DepositCollateral(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cosmos.reward.v1beta1.Msg/DepositCollateral",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).DepositCollateral(ctx, req.(*MsgDepositCollateral))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Msg_RemoveCollateral_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgRemoveCollateral)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).RemoveCollateral(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cosmos.reward.v1beta1.Msg/RemoveCollateral",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).RemoveCollateral(ctx, req.(*MsgRemoveCollateral))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _Msg_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "cosmos.reward.v1beta1.Msg",
 	HandlerType: (*MsgServer)(nil),
@@ -214,6 +573,18 @@ var _Msg_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RewardSolarPower",
 			Handler:    _Msg_RewardSolarPower_Handler,
+		},
+		{
+			MethodName: "BurnStableCoin",
+			Handler:    _Msg_BurnStableCoin_Handler,
+		},
+		{
+			MethodName: "DepositCollateral",
+			Handler:    _Msg_DepositCollateral_Handler,
+		},
+		{
+			MethodName: "RemoveCollateral",
+			Handler:    _Msg_RemoveCollateral_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

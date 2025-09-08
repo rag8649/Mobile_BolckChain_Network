@@ -98,23 +98,23 @@ func (h *lightTxHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 			continue
 		}
 
-		if !SentLatLng[txMsg.Hash] {
-			var location Location
-			if txMsg.Original != nil {
-				location = Location{
-					Latitude:  txMsg.Original.Location.Latitude,
-					Longitude: txMsg.Original.Location.Longitude,
-				}
-			}
+		// if !SentLatLng[txMsg.Hash] {
+		// 	var location Location
+		// 	if txMsg.Original != nil {
+		// 		location = Location{
+		// 			Latitude:  txMsg.Original.Location.Latitude,
+		// 			Longitude: txMsg.Original.Location.Longitude,
+		// 		}
+		// 	}
 
-			// 위도/경도가 모두 0이 아니어야 전송
-			if location.Latitude != 0 && location.Longitude != 0 {
-				sendLocationToKafka(txMsg.Hash, location, config.FullnodeID)
-				SentLatLng[txMsg.Hash] = true
-			} else {
-				fmt.Println("⚠️ 위도/경도 정보 없음 또는 0, Kafka 전송 생략:", txMsg.Hash)
-			}
-		}
+		// 	// 위도/경도가 모두 0이 아니어야 전송
+		// 	if location.Latitude != 0 && location.Longitude != 0 {
+		// 		sendLocationToKafka(txMsg.Hash, location, config.FullnodeID)
+		// 		SentLatLng[txMsg.Hash] = true
+		// 	} else {
+		// 		fmt.Println("⚠️ 위도/경도 정보 없음 또는 0, Kafka 전송 생략:", txMsg.Hash)
+		// 	}
+		// }
 		VoteMutex.Lock()
 		VoteMap[txMsg.Hash] = append(VoteMap[txMsg.Hash], SignatureEntry{
 			TxMsg:     txMsg,
@@ -172,24 +172,24 @@ func PubKeyToAddress(pubKeyBytes []byte) (string, error) { // 주소 변환 함�
 }
 
 // 위치 정보 -> 오라클 전송
-func sendLocationToKafka(hash string, loc Location, senderID string) {
-	payload := map[string]interface{}{
-		"hash":      hash,
-		"location":  loc,
-		"sender_id": senderID,
-	}
-	msgBytes, _ := json.Marshal(payload)
+// func sendLocationToKafka(hash string, loc Location, senderID string) {
+// 	payload := map[string]interface{}{
+// 		"hash":      hash,
+// 		"location":  loc,
+// 		"sender_id": senderID,
+// 	}
+// 	msgBytes, _ := json.Marshal(payload)
 
-	_, _, err := producer.KafkaProducerLatLng.SendMessage(&sarama.ProducerMessage{
-		Topic: config.TopicLocationProducer,
-		Value: sarama.ByteEncoder(msgBytes),
-	})
-	if err != nil {
-		fmt.Println("[Kafka: Solar data] Location Kafka 전송 실패:", err)
-	} else {
-		fmt.Println("[Kafka: Solar data] Location Kafka 전송 성공:", string(msgBytes))
-	}
-}
+// 	_, _, err := producer.KafkaProducerLatLng.SendMessage(&sarama.ProducerMessage{
+// 		Topic: config.TopicLocationProducer,
+// 		Value: sarama.ByteEncoder(msgBytes),
+// 	})
+// 	if err != nil {
+// 		fmt.Println("[Kafka: Solar data] Location Kafka 전송 실패:", err)
+// 	} else {
+// 		fmt.Println("[Kafka: Solar data] Location Kafka 전송 성공:", string(msgBytes))
+// 	}
+// }
 
 // 해시별로 10초 대기 후 평가
 func startVoteTimer(hash string) {
@@ -217,30 +217,34 @@ func startVoteTimer(hash string) {
 		txMsg := entries[0].TxMsg
 		fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
 
-		txHash, err := tx.BroadcastLightTx(txMsg)
-		if err != nil {
-			fmt.Println("[Kafka: Solar data] 트랜잭션 전송 실패:", err)
-		} else {
-			fmt.Printf("[Kafka: Solar data] 트랜잭션 전송 성공: %s\n", txHash)
-			fmt.Printf("[Kafka: Solar data] → 서명자 주소: %v\n", uniqueList)
+		fmt.Printf("[Kafka: Solar data] → 서명자 주소: %v\n", uniqueList)
 
-			SendValidatorMembers(uniqueList) // 서명자 보상 함수
+		SendValidatorMembers(uniqueList) // 서명자 보상 함수
 
-			if addr, ok := deviceAddressMap.Load(DeviceID[txMsg.Hash]); ok {
-				userAddress := addr.(string) // 타입 단언
-				if txMsg.Original != nil {
-					fmt.Printf("[Kafka: Solar data] 발전량 보상 지급 시작\n")
-					tx.SendRewardTxSafely(userAddress, txMsg.Original.TotalEnergy+txMsg.Original.TotalEnergy*RewardWeight[hash], true)
-				} else if txMsg.REC != nil {
-					mwh, err := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
-					if err == nil {
-						tx.SendRewardTxSafely(userAddress, mwh*1000000, true) // MWh → Wh
-					}
+		if addr, ok := deviceAddressMap.Load(DeviceID[txMsg.Hash]); ok {
+			userAddress := addr.(string) // 타입 단언
+
+			if txMsg.Original != nil {
+				fmt.Printf("[Kafka: Solar data] 발전량 보상 지급 시작\n")
+				tx.SendRewardTxSafely(userAddress, txMsg.Original.TotalEnergy, true)
+			} else if txMsg.REC != nil {
+				mwh, err := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
+				if err == nil {
+					tx.SendRewardTxSafely(userAddress, mwh*1000000, true) // MWh → Wh
 				}
-			} else {
-				fmt.Printf("[Kafka: Solar data] 주소 비어있음\n")
 			}
+
+			txHash, err := tx.BroadcastLightTx(txMsg, userAddress)
+			if err != nil {
+				fmt.Println("[Kafka: Solar data] 트랜잭션 전송 실패:", err)
+			} else {
+				fmt.Printf("[Kafka: Solar data] 트랜잭션 전송 성공: %s\n", txHash)
+			}
+
+		} else {
+			fmt.Printf("[Kafka: Solar data] 주소 비어있음\n")
 		}
+
 	}
 
 	// cleanup
@@ -401,49 +405,50 @@ func StartVMemberConsumer() {
 	}()
 
 }
-func StartLocationOutputConsumer() {
-	brokers := config.KafkaBrokers
-	topic := config.TopicLocationResult
-	partition := int32(0) // 토픽 파티션 고정 "result-location-topic"
 
-	cfg := sarama.NewConfig()
-	cfg.Version = sarama.V2_1_0_0
+// func StartLocationOutputConsumer() {
+// 	brokers := config.KafkaBrokers
+// 	topic := config.TopicLocationResult
+// 	partition := int32(0) // 토픽 파티션 고정 "result-location-topic"
 
-	consumer, err := sarama.NewConsumer(brokers, cfg)
-	if err != nil {
-		panic(fmt.Sprintf("[Kafka: Location] 단일 Consumer 생성 실패: %v", err))
-	}
+// 	cfg := sarama.NewConfig()
+// 	cfg.Version = sarama.V2_1_0_0
 
-	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetNewest)
-	if err != nil {
-		panic(fmt.Sprintf("[Kafka: Location] 파티션 구독 실패: %v", err))
-	}
+// 	consumer, err := sarama.NewConsumer(brokers, cfg)
+// 	if err != nil {
+// 		panic(fmt.Sprintf("[Kafka: Location] 단일 Consumer 생성 실패: %v", err))
+// 	}
 
-	// ✅ 메시지 수신 루프
-	go func() {
-		fmt.Println("[Kafka: Location] 응답 수신 대기 중...")
-		for msg := range partitionConsumer.Messages() {
-			fmt.Println("[Kafka: Location] 수신된 메시지:", string(msg.Value))
+// 	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetNewest)
+// 	if err != nil {
+// 		panic(fmt.Sprintf("[Kafka: Location] 파티션 구독 실패: %v", err))
+// 	}
 
-			var outputMsg LocationOutputMessage
-			if err := json.Unmarshal(msg.Value, &outputMsg); err != nil {
-				fmt.Println("[Kafka: Location] 메시지 파싱 실패:", err)
-				continue
-			}
+// 	// ✅ 메시지 수신 루프
+// 	go func() {
+// 		fmt.Println("[Kafka: Location] 응답 수신 대기 중...")
+// 		for msg := range partitionConsumer.Messages() {
+// 			fmt.Println("[Kafka: Location] 수신된 메시지:", string(msg.Value))
 
-			// ⚠️ 필터링: 내 노드가 보낸 메시지인지 확인 (선택적으로 추가)
-			if outputMsg.SenderID != config.FullnodeID {
-				fmt.Printf("[Kafka: Location] id: %s\n", outputMsg.SenderID)
-				continue // 내 응답 아님, 무시
-			}
+// 			var outputMsg LocationOutputMessage
+// 			if err := json.Unmarshal(msg.Value, &outputMsg); err != nil {
+// 				fmt.Println("[Kafka: Location] 메시지 파싱 실패:", err)
+// 				continue
+// 			}
 
-			RewardWeight[outputMsg.Hash] = outputMsg.Output
-			// ✅ 처리 로직
-			fmt.Printf("[Kafka: Location] 해시: %s, 보상 가중치: %f\n", outputMsg.Hash, RewardWeight[outputMsg.Hash])
+// 			// ⚠️ 필터링: 내 노드가 보낸 메시지인지 확인 (선택적으로 추가)
+// 			if outputMsg.SenderID != config.FullnodeID {
+// 				fmt.Printf("[Kafka: Location] id: %s\n", outputMsg.SenderID)
+// 				continue // 내 응답 아님, 무시
+// 			}
 
-		}
-	}()
-}
+// 			RewardWeight[outputMsg.Hash] = outputMsg.Output
+// 			// ✅ 처리 로직
+// 			fmt.Printf("[Kafka: Location] 해시: %s, 보상 가중치: %f\n", outputMsg.Hash, RewardWeight[outputMsg.Hash])
+
+// 		}
+// 	}()
+// }
 
 func StartSolarKafkaConsumer() {
 	brokers := config.KafkaBrokers
@@ -474,12 +479,14 @@ func StartSolarKafkaConsumer() {
 }
 
 func StartConsumer() {
-	go StartSolarKafkaConsumer()     // 태양광 발전량 토픽
-	go StartLocationOutputConsumer() // 위치 정보 토픽
-	go StartVoteMemberConsumer()     // 회원 수 토픽
-	go StartDeviceAddressConsumer()  // 디바이스 id, 주소 매핑 토픽
+	go StartSolarKafkaConsumer() // 태양광 발전량 토픽
+	// go StartLocationOutputConsumer() // 위치 정보 토픽
+	go StartVoteMemberConsumer()    // 회원 수 토픽
+	go StartDeviceAddressConsumer() // 디바이스 id, 주소 매핑 토픽
 
-	go StartAccountConsumer() // 회원가입 요청 토픽
-	go StartBalanceConsumer() // 잔고 확인 토픽
-	go StartVMemberConsumer() // 서명자 보상 토픽
+	go StartCollateralConsumer() // 담보 예치 요청 토픽
+	go StartBurnConsumer()       // 소각 요청 토픽
+	go StartAccountConsumer()    // 회원가입 요청 토픽
+	go StartBalanceConsumer()    // 잔고 확인 토픽
+	go StartVMemberConsumer()    // 서명자 보상 토픽
 }

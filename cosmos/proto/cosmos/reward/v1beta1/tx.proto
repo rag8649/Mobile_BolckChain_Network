@@ -11,13 +11,56 @@ service Msg {
     option (google.api.http).post = "/cosmos/reward/v1beta1/reward_solar_power";
     option (google.api.http).body = "*";
   }
+
+  // 🔥 소각 메세지 추가
+  rpc BurnStableCoin(MsgBurnStableCoin) returns (MsgBurnStableCoinResponse) {
+    option (google.api.http).post = "/cosmos/reward/v1beta1/burn_stable_coin";
+    option (google.api.http).body = "*";
+  }
+
+    // 담보 예치
+  rpc DepositCollateral(MsgDepositCollateral) returns (MsgDepositCollateralResponse) {
+    option (google.api.http).post = "/cosmos/reward/v1beta1/deposit_collateral";
+    option (google.api.http).body = "*";
+  }
+
+    // 🔥 담보 제거
+  rpc RemoveCollateral(MsgRemoveCollateral) returns (MsgRemoveCollateralResponse) {
+    option (google.api.http).post = "/cosmos/reward/v1beta1/remove_collateral";
+    option (google.api.http).body = "*";
+  }
 }
 
-// 메시지 정의
+// -------------------------
+// Tx 메시지들
+// -------------------------
+
+// 보상 (발행)
 message MsgRewardSolarPower {
   string creator = 1;
   string address = 2;
-  string amount = 3; // ← 수정: power → amount
+  string amount  = 3;
 }
 
+// 소각
+message MsgBurnStableCoin {
+  string creator     = 1; // 트랜잭션 실행자 (서명자)
+  string target_addr = 2; // 소각 대상 주소
+  string amount      = 3; // 소각할 양 (예: "1000stable")
+}
+
+message MsgDepositCollateral {
+  string creator = 1; // 담보를 예치하는 계정
+  string amount  = 2; // 예치할 토큰 양 (예: 100stake)
+}
+
+// 담보 삭제
+message MsgRemoveCollateral {
+  string creator = 1; // 서명자
+  string amount  = 2; // 차감할 수량 (stake 단위)
+}
+
+message MsgRemoveCollateralResponse {}
 message MsgRewardSolarPowerResponse {}
+message MsgBurnStableCoinResponse {}
+message MsgDepositCollateralResponse {}

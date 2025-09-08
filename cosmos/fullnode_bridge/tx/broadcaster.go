@@ -1,9 +1,12 @@
 package tx
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -14,7 +17,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/fullnode_bridge/types"
 )
 
-func BroadcastLightTx(msg types.LightTxMessage) (string, error) {
+func BroadcastLightTx(msg types.LightTxMessage, addr string) (string, error) {
 	var args []string
 
 	if msg.Original != nil {
@@ -41,7 +44,7 @@ func BroadcastLightTx(msg types.LightTxMessage) (string, error) {
 			msg.REC.CapacityMW,
 			msg.REC.RegistrationDate,
 			msg.REC.CertifiedId,
-			msg.REC.IssueData,
+			msg.REC.IssueDate,
 			msg.REC.GenerationStartDate,
 			msg.REC.GenerationEndDate,
 			msg.REC.MeasuredVolumeMWh,
@@ -81,15 +84,20 @@ func BroadcastLightTx(msg types.LightTxMessage) (string, error) {
 	if err := json.Unmarshal(output, &resp); err != nil {
 		return "", fmt.Errorf("failed to parse tx response: %v\noutput: %s", err, string(output))
 	}
+	// JSON 파싱
+
+	if resp.TxHash != "" {
+		_ = SendTxHash(addr, resp.TxHash)
+	}
 
 	return resp.TxHash, nil
 }
 
-// SendStakeToAddress.go
-func SendStakeToAddress(toAddr string) (string, error) {
+// UserCheck.go
+func UserCheck(toAddr string) (string, error) {
 	// 예시 CLI 호출
 	cmd := exec.Command("build/simd", "tx", "bank", "send",
-		"alice", toAddr, "1stake",
+		"alice", toAddr, "0stake",
 		"--gas", "auto",
 		"--chain-id", "learning-chain-1",
 		"--home", "private/.simapp",
@@ -161,56 +169,77 @@ func SendRewardTxSafely(addr string, amount float64, creator bool) error {
 	return err
 }
 
+var reSeqMismatch = regexp.MustCompile(`expected\s+(\d+),\s*got\s+(\d+)`)
+
+func runTx(args []string) (stdout, stderr []byte, err error) {
+	cmd := exec.Command("build/simd", args...)
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &outBuf, &errBuf
+	err = cmd.Run()
+	return outBuf.Bytes(), errBuf.Bytes(), err
+}
+
 func SendRewardTx(toAddr string, power float64, creator bool) (string, error) {
-	// 발전량이 0 이하이면 트랜잭션 안 보냄
 	if power <= 0 {
 		return "", fmt.Errorf("[Kafka: reward] 보상할 발전량이 없습니다")
 	}
+	amount := strconv.FormatInt(int64(math.Round(power)), 10)
 
-	// 소수점 버림
-	amount := int64(power * 10)
-	amountStr := strconv.FormatInt(amount, 10)
-
-	// 트랜잭션 실행 명령
-	cmd := exec.Command("build/simd", "tx", "reward", "reward-solar-power",
-		toAddr, amountStr,
+	base := []string{
+		"tx", "reward", "reward-solar-power", toAddr, amount,
 		"--from", "alice",
 		"--chain-id", "learning-chain-1",
 		"--home", "private/.simapp",
-		"--gas", "auto",
-		"--yes",
 		"--keyring-backend", "test",
-		"--broadcast-mode", "sync",
-		"--output", "json")
+		"--broadcast-mode", "sync", // 느려져도 안정 원하면 "block"
+		"--output", "json",
+		"--node", "tcp://localhost:26657", // 조회/브로드캐스트 동일 노드 고정!
+		"--gas", "auto", "--gas-adjustment", "1.2",
+		"--fees", "100stake",
+		"--yes",
+	}
 
-	out, err := cmd.CombinedOutput()
+	var stdout, stderr []byte
+	var err error
+
+	// 최대 3회 시도: 1차(기본) + 미스매치 시 expected로 재시도(최대 2회)
+	for attempt := 1; attempt <= 3; attempt++ {
+		stdout, stderr, err = runTx(base)
+		fmt.Printf("[Kafka: reward][try #%d] stdout: %s\n", attempt, stdout)
+		// if len(stderr) > 0 {
+		// 	fmt.Printf("[Kafka: reward][try #%d] stderr: %s\n", attempt, stderr)
+		// }
+
+		if err == nil {
+			break
+		}
+
+		// 시퀀스 mismatch면 expected로 다음 시도
+		if m := reSeqMismatch.FindStringSubmatch(string(stderr)); len(m) == 3 {
+			exp, _ := strconv.ParseUint(m[1], 10, 64)
+			fmt.Printf("[Kafka: reward] seq mismatch → expected=%d로 재시도\n", exp)
+			// base에 --sequence만 추가하여 덮어쓰기
+			base = append(base, "--sequence", fmt.Sprintf("%d", exp))
+			// 짧은 백오프
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		// 다른 오류면 바로 종료
+		break
+	}
 
 	if err != nil {
-		fmt.Println("[Kafka: reward] 트랜잭션 전송 실패:", err)
-		return "", fmt.Errorf("[Kafka: reward] 출력 내용: %v\n출력: %s", err, string(out))
+		return "", fmt.Errorf("[Kafka: reward] 전송 실패: %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
 	}
 
-	// 필요하다면 txhash 추출 후 블록 포함 여부 확인
-	time.Sleep(10 * time.Second)
-
-	var txResp struct {
-		TxHash string `json:"txhash"`
-	}
-	if err := json.Unmarshal(out, &txResp); err != nil {
-		fmt.Printf("JSON 파싱 실패: %s\n", err)
-	}
-
-	if creator { // 블록 생성자일 경우에만 해시값 전송
-		SendTxHash(toAddr, txResp.TxHash)
-	}
-
-	// 잔고 조회
-	balance, err := QueryBalance(toAddr)
-	if err != nil {
-		fmt.Println("[Kafka: reward] 잔고 조회 실패:", err)
-	} else {
-		fmt.Println("[Kafka: reward] 결과:", balance)
-	}
+	go func(addr string) {
+		time.Sleep(10 * time.Second)
+		if balance, err := QueryBalance(addr); err != nil {
+			fmt.Printf("[Kafka: reward] 잔고 조회 실패: %v\n", err)
+		} else {
+			fmt.Printf("[Kafka: reward] %s 잔고: %s\n", addr, balance)
+		}
+	}(toAddr)
 
 	return "", nil
 }
@@ -222,13 +251,22 @@ func SendTxHash(addr, hash string) error {
 	}
 	bytes, err := json.Marshal(msg)
 	if err != nil {
+		fmt.Printf("[Kafka: TxHash] JSON 직렬화 실패: %v\n", err)
 		return err
 	}
+
+	fmt.Printf("[Kafka: TxHash] 전송 준비: addr=%s hash=%s\n", addr, hash)
 
 	kafkaMsg := &sarama.ProducerMessage{
 		Topic: config.TopicTxHash,
 		Value: sarama.ByteEncoder(bytes),
 	}
-	_, _, err = producer.KafkaProducerTxHash.SendMessage(kafkaMsg)
-	return err
+	partition, offset, err := producer.KafkaProducerTxHash.SendMessage(kafkaMsg)
+	if err != nil {
+		fmt.Printf("[Kafka: TxHash] Kafka 전송 실패: %v\n", err)
+		return err
+	}
+
+	fmt.Printf("[Kafka: TxHash] Kafka 전송 성공 (partition=%d offset=%d)\n", partition, offset)
+	return nil
 }
