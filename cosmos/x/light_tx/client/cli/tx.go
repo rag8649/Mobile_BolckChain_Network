@@ -62,7 +62,7 @@ func CmdSendLightTx() *cobra.Command {
 						CapacityMw:          args[4],
 						RegistrationDate:    args[5],
 						CertifiedId:         args[6],
-						IssueData:           args[7],
+						IssueDate:           args[7],
 						GenerationStartDate: args[8],
 						GenerationEndDate:   args[9],
 						MeasuredVolume_MWh:  args[10],

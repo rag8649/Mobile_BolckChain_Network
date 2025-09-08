@@ -31,7 +31,7 @@ message RECMeta {
   string capacity_mw           = 5;
   string registration_date     = 6;
   string certified_id          = 7;
-  string issue_data            = 8;
+  string issue_date            = 8;
   string generation_start_date = 9;
   string generation_end_date   = 10;
   string measured_volume_MWh   = 11;

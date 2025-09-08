@@ -62,7 +62,7 @@ func (k msgServer) SendLightTx(goCtx context.Context, msg *lighttype.MsgSendLigh
 			"capacity_mw", data.CapacityMw,
 			"registration_date", data.RegistrationDate,
 			"certified_id", data.CertifiedId,
-			"issue_date", data.IssueData,
+			"issue_date", data.IssueDate,
 			"generation_start", data.GenerationStartDate,
 			"generation_end", data.GenerationEndDate,
 			"measured_volume", data.MeasuredVolume_MWh,
