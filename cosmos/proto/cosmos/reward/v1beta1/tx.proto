@@ -1,39 +1,68 @@
 syntax = "proto3";
 
 package cosmos.reward.v1beta1;
+
 import "google/api/annotations.proto";
+import "gogoproto/gogo.proto";
 
 option go_package = "github.com/cosmos/cosmos-sdk/x/reward/types";
 
+option (gogoproto.equal_all)       = true;
+option (gogoproto.marshaler_all)   = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.sizer_all)       = true;
+
+// =====================
 // Msg service
+// =====================
 service Msg {
   rpc RewardSolarPower(MsgRewardSolarPower) returns (MsgRewardSolarPowerResponse) {
     option (google.api.http).post = "/cosmos/reward/v1beta1/reward_solar_power";
     option (google.api.http).body = "*";
   }
 
-  // 🔥 소각 메세지 추가
   rpc BurnStableCoin(MsgBurnStableCoin) returns (MsgBurnStableCoinResponse) {
     option (google.api.http).post = "/cosmos/reward/v1beta1/burn_stable_coin";
     option (google.api.http).body = "*";
   }
 
-    // 담보 예치
+  rpc BurnModuleStable(MsgBurnModuleStable) returns (MsgBurnModuleStableResponse) {
+    option (google.api.http).post = "/cosmos/reward/v1beta1/burn_module_stable";
+    option (google.api.http).body = "*";
+  }
+
   rpc DepositCollateral(MsgDepositCollateral) returns (MsgDepositCollateralResponse) {
     option (google.api.http).post = "/cosmos/reward/v1beta1/deposit_collateral";
     option (google.api.http).body = "*";
   }
 
-    // 🔥 담보 제거
   rpc RemoveCollateral(MsgRemoveCollateral) returns (MsgRemoveCollateralResponse) {
     option (google.api.http).post = "/cosmos/reward/v1beta1/remove_collateral";
     option (google.api.http).body = "*";
   }
+
+  // ✅ AddEnergy
+  rpc AddEnergy(MsgAddEnergy) returns (MsgAddEnergyResponse) {
+    option (google.api.http).post = "/cosmos/reward/v1beta1/add_energy";
+    option (google.api.http).body = "*";
+  }
+
+  // ✅ CreateRECRecord
+  rpc CreateRECRecord(MsgCreateRECRecord) returns (MsgCreateRECRecordResponse) {
+    option (google.api.http).post = "/cosmos/reward/v1beta1/create_rec_record";
+    option (google.api.http).body = "*";
+  }
+
+  // ✅ AppendTxHash (LinkedList 노드 생성)
+  rpc AppendTxHash(MsgAppendTxHash) returns (MsgAppendTxHashResponse) {
+    option (google.api.http).post = "/cosmos/reward/v1beta1/append_tx_hash";
+    option (google.api.http).body = "*";
+  }
 }
 
-// -------------------------
+// =====================
 // Tx 메시지들
-// -------------------------
+// =====================
 
 // 보상 (발행)
 message MsgRewardSolarPower {
@@ -44,23 +73,119 @@ message MsgRewardSolarPower {
 
 // 소각
 message MsgBurnStableCoin {
-  string creator     = 1; // 트랜잭션 실행자 (서명자)
-  string target_addr = 2; // 소각 대상 주소
-  string amount      = 3; // 소각할 양 (예: "1000stable")
+  string creator     = 1;
+  string target_addr = 2;
+  string amount      = 3;
 }
 
+// 소각 (모듈 계좌 대상)
+message MsgBurnModuleStable {
+  string creator = 1;
+  string amount  = 2;
+}
+
+// 담보 예치
 message MsgDepositCollateral {
-  string creator = 1; // 담보를 예치하는 계정
-  string amount  = 2; // 예치할 토큰 양 (예: 100stake)
+  string creator = 1;
+  oneof rec_type {
+    RECRecord rec_record = 2;
+    RECMeta   rec_meta   = 3;
+  }
 }
 
 // 담보 삭제
 message MsgRemoveCollateral {
-  string creator = 1; // 서명자
-  string amount  = 2; // 차감할 수량 (stake 단위)
+  string creator = 1;
+  string amount  = 2;
 }
 
+// AddEnergy
+message MsgAddEnergy {
+  string creator = 1; // 실행자 주소
+  string to      = 2; // 발전자 주소
+  string amount  = 3; // Wh 단위
+  string tx_hash = 4; // 원본 Tx 해시
+}
+message MsgAddEnergyResponse {
+  int64 recs = 1;
+}
+
+// CreateRECRecord
+message MsgCreateRECRecord {
+  string creator = 1;
+  int64  count   = 2;
+}
+
+message MsgCreateRECRecordResponse {
+  repeated string rec_ids = 1; // 발급된 REC ID 리스트
+}
+
+// AppendTxHash
+message MsgAppendTxHash {
+  string creator     = 1; // 항상 from=alice
+  repeated string tx_hashes = 2; // kvstore에서 가져온 해시 리스트
+  string node_creator = 3; // 노드 생성자
+  string rec_id       = 4; // 연결된 REC ID
+  string next         = 5; // 다음 노드 key
+}
+
+message MsgAppendTxHashResponse {
+  TxNodeTx node = 1;
+}
+
+// =====================
+// 데이터 구조체
+// =====================
+message RECRecord {
+  string rec_id        = 1;
+  string issued_at     = 2;
+  int64  block_height  = 3;
+  string total_energy  = 4;
+  repeated Contributor contributors = 5;
+  repeated string source_tx = 6;
+}
+
+message Contributor {
+  string address    = 1;
+  string energy_kwh = 2;
+}
+
+message RECMeta {
+  string facility_id        = 1;
+  string facility_name      = 2;
+  string location           = 3;
+  string technology_type    = 4;
+  string capacity_mw        = 5;
+  string registration_date  = 6;
+  string certified_id       = 7;
+  string issue_date         = 8;
+  string generation_start_date = 9;
+  string generation_end_date   = 10;
+  string measured_volume_mwh   = 11;
+  string retired_date          = 12;
+  string retirement_purpose    = 13;
+  string status                = 14;
+  string timestamp             = 15;
+}
+
+// LinkedList Node 구조체
+message TxNodeTx {
+  repeated string tx_hashes = 1;
+  string creator            = 2;
+  string rec_id             = 3;
+  string next               = 4;
+}
+
+// =====================
+// 응답 메시지들
+// =====================
 message MsgRemoveCollateralResponse {}
 message MsgRewardSolarPowerResponse {}
-message MsgBurnStableCoinResponse {}
+message MsgBurnStableCoinResponse {
+  repeated RECRecord rec_records = 1;
+  repeated RECMeta   rec_metas   = 2;
+}
 message MsgDepositCollateralResponse {}
+message MsgBurnModuleStableResponse {
+  string burned_amount = 1;
+}

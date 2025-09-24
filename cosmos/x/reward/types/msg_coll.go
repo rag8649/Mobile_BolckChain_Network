@@ -7,13 +7,22 @@ import (
 
 var _ sdk.Msg = &MsgDepositCollateral{}
 
-func NewMsgDepositCollateral(creator, amount string) *MsgDepositCollateral {
+func NewMsgDepositCollateralWithMeta(creator string, meta RECMeta) *MsgDepositCollateral {
 	return &MsgDepositCollateral{
 		Creator: creator,
-		Amount:  amount,
+		RecType: &MsgDepositCollateral_RecMeta{RecMeta: &meta},
 	}
 }
 
+// NewMsgDepositCollateralWithRecord : 내부 RECRecord 담보 예치
+func NewMsgDepositCollateralWithRecord(creator string, rec RECRecord) *MsgDepositCollateral {
+	return &MsgDepositCollateral{
+		Creator: creator,
+		RecType: &MsgDepositCollateral_RecRecord{RecRecord: &rec},
+	}
+}
+
+// 표준 Cosmos SDK Msg 인터페이스 구현
 func (msg *MsgDepositCollateral) Route() string { return ModuleName }
 func (msg *MsgDepositCollateral) Type() string  { return "DepositCollateral" }
 
@@ -34,8 +43,14 @@ func (msg *MsgDepositCollateral) ValidateBasic() error {
 	if _, err := sdk.AccAddressFromBech32(msg.Creator); err != nil {
 		return sdkerrors.Wrapf(sdkerrors.ErrInvalidAddress, "invalid creator address (%s)", err)
 	}
-	if msg.Amount == "" {
-		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "amount cannot be empty")
+
+	if msg.GetRecRecord() == nil && msg.GetRecMeta() == nil {
+		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "either rec_record or rec_meta must be provided")
 	}
+
+	if msg.GetRecRecord() != nil && msg.GetRecMeta() != nil {
+		return sdkerrors.Wrap(sdkerrors.ErrInvalidRequest, "only one of rec_record or rec_meta must be provided")
+	}
+
 	return nil
 }

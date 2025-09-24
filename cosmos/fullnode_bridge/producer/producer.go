@@ -9,6 +9,7 @@ import (
 )
 
 var KafkaProducerDevice sarama.SyncProducer // 디바이스 정보 전송 프로듀서
+var KafkaContributors sarama.SyncProducer   // 발전량 데이터 전송
 var KafkaProducerVMember sarama.SyncProducer
 var KafkaProducerLatLng sarama.SyncProducer  // 위도경도 전송용 프로듀서
 var KafkaProducerBalance sarama.SyncProducer // 잔고 전송 프로듀서
@@ -33,4 +34,5 @@ func InitProducer() {
 	KafkaProducerVMember = NewKafkaSyncProducer(config.KafkaBrokers)
 	KafkaProducerBalance = NewKafkaSyncProducer(config.KafkaBrokers)
 	KafkaProducerTxHash = NewKafkaSyncProducer(config.KafkaBrokers)
+	KafkaContributors = NewKafkaSyncProducer(config.KafkaBrokers)
 }

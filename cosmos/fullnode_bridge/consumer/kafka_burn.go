@@ -25,6 +25,7 @@ func (h *burnHandler) Cleanup(_ sarama.ConsumerGroupSession) error { return nil 
 func (h *burnHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for msg := range claim.Messages() {
 		var burnMsg types.BurnMessage
+
 		if err := json.Unmarshal(msg.Value, &burnMsg); err != nil {
 			fmt.Println("[Kafka: Burn] 메시지 파싱 실패:", err)
 
@@ -53,10 +54,25 @@ func (h *burnHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sa
 			continue
 		}
 
+		burnResult := types.BurnResultMessage{
+			Address: burnMsg.Address,
+			Stable:  burnMsg.Stable,
+		}
+
+		if err != nil {
+			burnResult.Status = "error"
+			burnResult.ErrorReason = err.Error()
+		} else {
+			burnResult.Status = "success"
+			burnResult.RECRecords = result.RECRecords
+			burnResult.RECMetas = result.RECMetas
+			burnResult.TxHash = result.TxHash
+		}
+
 		fmt.Printf("[Kafka: Burn] 소각 성공: %v\n", result)
 
 		// 성공 메시지 전송
-		encoded, err := json.Marshal(burnMsg)
+		encoded, err := json.Marshal(burnResult)
 		if err != nil {
 			fmt.Println("[Kafka: Burn] JSON 직렬화 실패:", err)
 			continue

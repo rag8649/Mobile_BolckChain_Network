@@ -2,6 +2,9 @@ package keeper
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/reward/types"
@@ -29,19 +32,18 @@ func (m *msgServer) RewardSolarPower(goCtx context.Context, msg *types.MsgReward
 func (m msgServer) BurnStableCoin(goCtx context.Context, msg *types.MsgBurnStableCoin) (*types.MsgBurnStableCoinResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	// Creator(서명자) → 권한 확인용
-	// TargetAddr → 실제 소각 대상
-	err := m.Keeper.BurnStableCoin(ctx, msg.TargetAddr, msg.Amount)
+	resp, err := m.Keeper.BurnStableCoin(ctx, msg.TargetAddr, msg.Amount)
 	if err != nil {
 		return nil, err
 	}
-	return &types.MsgBurnStableCoinResponse{}, nil
+	return resp, nil
+
 }
 
 func (m msgServer) DepositCollateral(goCtx context.Context, msg *types.MsgDepositCollateral) (*types.MsgDepositCollateralResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
-	if err := m.Keeper.DepositCollateral(ctx, msg.Creator, msg.Amount); err != nil {
+	if err := m.Keeper.DepositCollateral(ctx, msg); err != nil {
 		return nil, err
 	}
 
@@ -56,4 +58,115 @@ func (m msgServer) RemoveCollateral(goCtx context.Context, msg *types.MsgRemoveC
 	}
 
 	return &types.MsgRemoveCollateralResponse{}, nil
+}
+
+func (m msgServer) BurnModuleStable(goCtx context.Context, msg *types.MsgBurnModuleStable) (*types.MsgBurnModuleStableResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Keeper 함수 호출
+	err := m.Keeper.BurnModuleStableCoins(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("burn failed: %w", err)
+	}
+
+	return &types.MsgBurnModuleStableResponse{}, nil
+}
+func (m msgServer) AddEnergy(goCtx context.Context, msg *types.MsgAddEnergy) (*types.MsgAddEnergyResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Wh 단위 amount 파싱
+	whAmt, ok := sdk.NewIntFromString(msg.Amount)
+	if !ok {
+		return nil, fmt.Errorf("invalid amount: %s", msg.Amount)
+	}
+
+	// Keeper 호출
+	recs := m.Keeper.AddEnergy(ctx, msg.To, float64(whAmt.Int64()), msg.TxHash)
+
+	// 모든 발전자별 누적량 조회 (contributor list 만들기)
+	store := ctx.KVStore(m.Keeper.storeKey)
+	var contributors []*types.Contributor
+
+	iterator := sdk.KVStorePrefixIterator(store, []byte(types.EnergyByAddressPrefix))
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		addr := string(iterator.Key()[len(types.EnergyByAddressPrefix):]) // prefix 제거
+		var amount float64
+		_ = json.Unmarshal(iterator.Value(), &amount)
+
+		contributors = append(contributors, &types.Contributor{
+			Address:   addr,
+			EnergyKwh: fmt.Sprintf("%f", amount),
+		})
+	}
+
+	// contributors 를 JSON 문자열로 변환
+	contribJSON, _ := json.Marshal(contributors)
+
+	// 이벤트 발행
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent("add_energy",
+			sdk.NewAttribute("creator", msg.Creator),
+			sdk.NewAttribute("to", msg.To),
+			sdk.NewAttribute("amount", msg.Amount),
+			sdk.NewAttribute("tx_hash", msg.TxHash),
+			sdk.NewAttribute("recs", fmt.Sprintf("%d", recs)),
+			sdk.NewAttribute("contributors", string(contribJSON)), // 🔥 JSON 문자열
+		),
+	)
+
+	return &types.MsgAddEnergyResponse{Recs: recs}, nil
+}
+
+func (m msgServer) CreateRECRecord(goCtx context.Context, msg *types.MsgCreateRECRecord) (*types.MsgCreateRECRecordResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// Keeper 호출 → RECRecord 발급
+	recIDs, err := m.Keeper.CreateRECRecord(ctx, msg.Count)
+	if err != nil {
+		return nil, err
+	}
+	// 이벤트 발행
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent("create_rec_record",
+			sdk.NewAttribute("creator", msg.Creator),
+			sdk.NewAttribute("count", fmt.Sprintf("%d", msg.Count)),
+			sdk.NewAttribute("rec_id", recIDs[0]),
+		),
+	)
+
+	// 단순 완료 응답 (필요시 RECRecord 반환 로직 추가 가능)
+	return &types.MsgCreateRECRecordResponse{RecIds: recIDs}, nil
+}
+
+func (m msgServer) AppendTxHash(goCtx context.Context, msg *types.MsgAppendTxHash) (*types.MsgAppendTxHashResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	// proto 정의에 맞춘 TxNode 생성
+	node := types.TxNodeTx{
+		TxHashes: msg.TxHashes,
+		Creator:  msg.NodeCreator, // LinkedList 노드 생성자
+		RecId:    msg.RecId,       // proto에 추가된 rec_id
+		Next:     msg.Next,
+	}
+
+	if err := m.Keeper.AppendTxNode(ctx, node); err != nil {
+		return nil, err
+	}
+
+	// 이벤트 발행
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent("append_tx_hash",
+			sdk.NewAttribute("signer", msg.Creator),           // from=alice
+			sdk.NewAttribute("node_creator", msg.NodeCreator), // LinkedList node 생성자
+			sdk.NewAttribute("rec_id", msg.RecId),
+			sdk.NewAttribute("hashes", strings.Join(msg.TxHashes, ",")),
+		),
+	)
+
+	// proto 응답 구조에 맞게 node 반환
+	return &types.MsgAppendTxHashResponse{
+		Node: &node,
+	}, nil
 }

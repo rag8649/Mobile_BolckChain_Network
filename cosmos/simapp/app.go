@@ -250,7 +250,7 @@ func NewSimApp(
 		evidencetypes.StoreKey, capabilitytypes.StoreKey,
 		authzkeeper.StoreKey,
 		mymoduletypes.StoreKey, // ✅ 반드시 포함
-		lighttxtypes.ModuleName,
+		lighttxtypes.StoreKey,
 		mappingtypes.StoreKey,
 		rewardtypes.StoreKey,
 	)

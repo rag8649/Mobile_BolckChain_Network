@@ -7,15 +7,17 @@ import (
 	bytes "bytes"
 	context "context"
 	fmt "fmt"
-	io "io"
-	math "math"
-	math_bits "math/bits"
 
 	_ "github.com/gogo/protobuf/gogoproto"
 	grpc1 "github.com/gogo/protobuf/grpc"
 	proto "github.com/gogo/protobuf/proto"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	grpc "google.golang.org/grpc"
+
+	io "io"
+	math "math"
+	math_bits "math/bits"
+
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
 )
@@ -31,7 +33,9 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-// 전체 담보 총량만 관리
+// ----------------------
+// 데이터 구조체
+// ----------------------
 type Collateral struct {
 	Amount               string   `protobuf:"bytes,1,opt,name=amount,proto3" json:"amount,omitempty" yaml:"amount"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
@@ -79,7 +83,6 @@ func (m *Collateral) GetAmount() string {
 	return ""
 }
 
-// 발행량 기록
 type Supply struct {
 	Minted               string   `protobuf:"bytes,1,opt,name=minted,proto3" json:"minted,omitempty" yaml:"minted"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
@@ -302,6 +305,188 @@ func (m *QuerySupplyResponse) GetSupply() Supply {
 	return Supply{}
 }
 
+// 🔹 REC 조회
+type QueryRECListRequest struct {
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *QueryRECListRequest) Reset()         { *m = QueryRECListRequest{} }
+func (m *QueryRECListRequest) String() string { return proto.CompactTextString(m) }
+func (*QueryRECListRequest) ProtoMessage()    {}
+func (*QueryRECListRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_31b4750f0ba8958d, []int{6}
+}
+func (m *QueryRECListRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *QueryRECListRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_QueryRECListRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *QueryRECListRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryRECListRequest.Merge(m, src)
+}
+func (m *QueryRECListRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *QueryRECListRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryRECListRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryRECListRequest proto.InternalMessageInfo
+
+type QueryRECListResponse struct {
+	RecRecords           []*RECRecord `protobuf:"bytes,1,rep,name=rec_records,json=recRecords,proto3" json:"rec_records,omitempty"`
+	RecMetas             []*RECMeta   `protobuf:"bytes,2,rep,name=rec_metas,json=recMetas,proto3" json:"rec_metas,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}     `json:"-"`
+	XXX_unrecognized     []byte       `json:"-"`
+	XXX_sizecache        int32        `json:"-"`
+}
+
+func (m *QueryRECListResponse) Reset()         { *m = QueryRECListResponse{} }
+func (m *QueryRECListResponse) String() string { return proto.CompactTextString(m) }
+func (*QueryRECListResponse) ProtoMessage()    {}
+func (*QueryRECListResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_31b4750f0ba8958d, []int{7}
+}
+func (m *QueryRECListResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *QueryRECListResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_QueryRECListResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *QueryRECListResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryRECListResponse.Merge(m, src)
+}
+func (m *QueryRECListResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *QueryRECListResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryRECListResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryRECListResponse proto.InternalMessageInfo
+
+func (m *QueryRECListResponse) GetRecRecords() []*RECRecord {
+	if m != nil {
+		return m.RecRecords
+	}
+	return nil
+}
+
+func (m *QueryRECListResponse) GetRecMetas() []*RECMeta {
+	if m != nil {
+		return m.RecMetas
+	}
+	return nil
+}
+
+// 🔹 LinkedList Node 전체 조회
+type QueryTxNodeListRequest struct {
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *QueryTxNodeListRequest) Reset()         { *m = QueryTxNodeListRequest{} }
+func (m *QueryTxNodeListRequest) String() string { return proto.CompactTextString(m) }
+func (*QueryTxNodeListRequest) ProtoMessage()    {}
+func (*QueryTxNodeListRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_31b4750f0ba8958d, []int{8}
+}
+func (m *QueryTxNodeListRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *QueryTxNodeListRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_QueryTxNodeListRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *QueryTxNodeListRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryTxNodeListRequest.Merge(m, src)
+}
+func (m *QueryTxNodeListRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *QueryTxNodeListRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryTxNodeListRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryTxNodeListRequest proto.InternalMessageInfo
+
+type QueryTxNodeListResponse struct {
+	Nodes                []*TxNodeTx `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
+	XXX_unrecognized     []byte      `json:"-"`
+	XXX_sizecache        int32       `json:"-"`
+}
+
+func (m *QueryTxNodeListResponse) Reset()         { *m = QueryTxNodeListResponse{} }
+func (m *QueryTxNodeListResponse) String() string { return proto.CompactTextString(m) }
+func (*QueryTxNodeListResponse) ProtoMessage()    {}
+func (*QueryTxNodeListResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_31b4750f0ba8958d, []int{9}
+}
+func (m *QueryTxNodeListResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *QueryTxNodeListResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_QueryTxNodeListResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *QueryTxNodeListResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_QueryTxNodeListResponse.Merge(m, src)
+}
+func (m *QueryTxNodeListResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *QueryTxNodeListResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_QueryTxNodeListResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_QueryTxNodeListResponse proto.InternalMessageInfo
+
+func (m *QueryTxNodeListResponse) GetNodes() []*TxNodeTx {
+	if m != nil {
+		return m.Nodes
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*Collateral)(nil), "cosmos.reward.v1beta1.Collateral")
 	proto.RegisterType((*Supply)(nil), "cosmos.reward.v1beta1.Supply")
@@ -309,37 +494,52 @@ func init() {
 	proto.RegisterType((*QueryCollateralResponse)(nil), "cosmos.reward.v1beta1.QueryCollateralResponse")
 	proto.RegisterType((*QuerySupplyRequest)(nil), "cosmos.reward.v1beta1.QuerySupplyRequest")
 	proto.RegisterType((*QuerySupplyResponse)(nil), "cosmos.reward.v1beta1.QuerySupplyResponse")
+	proto.RegisterType((*QueryRECListRequest)(nil), "cosmos.reward.v1beta1.QueryRECListRequest")
+	proto.RegisterType((*QueryRECListResponse)(nil), "cosmos.reward.v1beta1.QueryRECListResponse")
+	proto.RegisterType((*QueryTxNodeListRequest)(nil), "cosmos.reward.v1beta1.QueryTxNodeListRequest")
+	proto.RegisterType((*QueryTxNodeListResponse)(nil), "cosmos.reward.v1beta1.QueryTxNodeListResponse")
 }
 
 func init() { proto.RegisterFile("cosmos/reward/v1beta1/query.proto", fileDescriptor_31b4750f0ba8958d) }
 
 var fileDescriptor_31b4750f0ba8958d = []byte{
-	// 394 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x92, 0xcd, 0x4e, 0xea, 0x40,
-	0x1c, 0xc5, 0xef, 0x90, 0x7b, 0x9b, 0xdc, 0x41, 0x17, 0x56, 0x54, 0xd2, 0x48, 0x91, 0x31, 0x26,
-	0xa2, 0xa1, 0x13, 0x60, 0x61, 0xe2, 0xc7, 0x42, 0x7c, 0x02, 0xeb, 0xce, 0x8d, 0x19, 0x60, 0x52,
-	0x1b, 0xdb, 0x4e, 0xe9, 0x4c, 0xd5, 0x6e, 0x5d, 0xf8, 0x02, 0x26, 0x3e, 0x83, 0xbe, 0x09, 0x4b,
-	0x13, 0xf7, 0xc4, 0x34, 0x3e, 0x81, 0x4f, 0x60, 0x98, 0x29, 0x41, 0x02, 0x18, 0x56, 0x6d, 0xce,
-	0xfc, 0xce, 0x99, 0x33, 0xff, 0x19, 0x58, 0xe9, 0x30, 0xee, 0x33, 0x8e, 0x23, 0x7a, 0x47, 0xa2,
-	0x2e, 0xbe, 0xad, 0xb7, 0xa9, 0x20, 0x75, 0xdc, 0x8b, 0x69, 0x94, 0x58, 0x61, 0xc4, 0x04, 0xd3,
-	0xd7, 0x14, 0x62, 0x29, 0xc4, 0xca, 0x10, 0xa3, 0xe0, 0x30, 0x87, 0x49, 0x02, 0x0f, 0xff, 0x14,
-	0x6c, 0x6c, 0x3a, 0x8c, 0x39, 0x1e, 0xc5, 0x24, 0x74, 0x31, 0x09, 0x02, 0x26, 0x88, 0x70, 0x59,
-	0xc0, 0xd5, 0x2a, 0x3a, 0x80, 0xf0, 0x8c, 0x79, 0x1e, 0x11, 0x34, 0x22, 0x9e, 0x5e, 0x85, 0x1a,
-	0xf1, 0x59, 0x1c, 0x88, 0x22, 0xd8, 0x02, 0xbb, 0xff, 0x5b, 0x2b, 0x5f, 0x83, 0xf2, 0x72, 0x42,
-	0x7c, 0xef, 0x10, 0x29, 0x1d, 0xd9, 0x19, 0x80, 0x9a, 0x50, 0xbb, 0x88, 0xc3, 0xd0, 0x4b, 0x86,
-	0x26, 0xdf, 0x0d, 0x04, 0xed, 0x4e, 0x9b, 0x94, 0x8e, 0xec, 0x0c, 0x40, 0x45, 0xb8, 0x7e, 0x3e,
-	0x3c, 0xc7, 0x78, 0x4b, 0x9b, 0xf6, 0x62, 0xca, 0x05, 0x3a, 0x86, 0x1b, 0x53, 0x2b, 0x3c, 0x64,
-	0x01, 0xa7, 0x7a, 0x05, 0x2e, 0x09, 0x26, 0x88, 0x77, 0xf5, 0xb3, 0x9a, 0x9d, 0x97, 0xda, 0xa9,
-	0x2a, 0x53, 0x80, 0xba, 0x74, 0xab, 0x46, 0xa3, 0x4c, 0x1b, 0xae, 0x4e, 0xa8, 0x59, 0xde, 0x11,
-	0xd4, 0xb8, 0x54, 0x64, 0x52, 0xbe, 0x51, 0xb2, 0x66, 0x8e, 0xd3, 0x52, 0xb6, 0xd6, 0xdf, 0xfe,
-	0xa0, 0xfc, 0xc7, 0xce, 0x2c, 0x8d, 0xd7, 0x1c, 0xfc, 0x27, 0x43, 0xf5, 0x67, 0x30, 0x31, 0xba,
-	0xda, 0x9c, 0x94, 0xd9, 0xe7, 0x35, 0xac, 0x45, 0x71, 0x55, 0x1a, 0x55, 0x1f, 0xde, 0x3f, 0x9f,
-	0x72, 0xdb, 0x7a, 0x05, 0xcf, 0x7e, 0x1e, 0x9d, 0x71, 0x93, 0x47, 0x30, 0xbe, 0x9a, 0xdf, 0x76,
-	0x99, 0x18, 0x96, 0xb1, 0xb7, 0x08, 0x9a, 0x95, 0xd9, 0x91, 0x65, 0xca, 0x7a, 0x69, 0x4e, 0x19,
-	0x35, 0xab, 0xd6, 0xc9, 0x4b, 0x6a, 0x82, 0x7e, 0x6a, 0x82, 0xb7, 0xd4, 0x04, 0x1f, 0xa9, 0x09,
-	0x2e, 0xf7, 0x1d, 0x57, 0x5c, 0xc7, 0x6d, 0xab, 0xc3, 0xfc, 0x91, 0x55, 0x7d, 0x6a, 0xbc, 0x7b,
-	0x83, 0xef, 0x47, 0x39, 0x22, 0x09, 0x29, 0x6f, 0x6b, 0xf2, 0x85, 0x36, 0xbf, 0x03, 0x00, 0x00,
-	0xff, 0xff, 0x05, 0x1a, 0x41, 0x1a, 0x11, 0x03, 0x00, 0x00,
+	// 574 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x94, 0xc1, 0x6e, 0xd3, 0x4c,
+	0x14, 0x85, 0xff, 0xe9, 0xdf, 0x06, 0x7a, 0x03, 0x0b, 0x86, 0x14, 0xa2, 0x88, 0x3a, 0x89, 0xab,
+	0x8a, 0x96, 0xa8, 0xb6, 0x9a, 0x0a, 0x21, 0x51, 0x58, 0x34, 0x51, 0x77, 0x80, 0x60, 0xe8, 0x8a,
+	0x4d, 0x34, 0xb1, 0x47, 0x21, 0xc2, 0xf6, 0xb8, 0x9e, 0x09, 0x24, 0x5b, 0x16, 0x6c, 0x58, 0x22,
+	0x55, 0x3c, 0x02, 0x8f, 0xd2, 0x25, 0x82, 0x7d, 0x85, 0x22, 0x9e, 0x80, 0x27, 0x40, 0x9e, 0x99,
+	0x90, 0x58, 0x89, 0xa3, 0xac, 0x32, 0xba, 0xf7, 0xdc, 0x73, 0xbf, 0x8c, 0x8f, 0x06, 0xea, 0x1e,
+	0x17, 0x21, 0x17, 0x6e, 0xc2, 0x3e, 0xd0, 0xc4, 0x77, 0xdf, 0x1f, 0x76, 0x99, 0xa4, 0x87, 0xee,
+	0xf9, 0x80, 0x25, 0x23, 0x27, 0x4e, 0xb8, 0xe4, 0x78, 0x4b, 0x4b, 0x1c, 0x2d, 0x71, 0x8c, 0xa4,
+	0x52, 0xea, 0xf1, 0x1e, 0x57, 0x0a, 0x37, 0x3d, 0x69, 0x71, 0xe5, 0x5e, 0x8f, 0xf3, 0x5e, 0xc0,
+	0x5c, 0x1a, 0xf7, 0x5d, 0x1a, 0x45, 0x5c, 0x52, 0xd9, 0xe7, 0x91, 0x30, 0x5d, 0x6b, 0xf1, 0x36,
+	0x39, 0xd4, 0x7d, 0xfb, 0x11, 0x40, 0x9b, 0x07, 0x01, 0x95, 0x2c, 0xa1, 0x01, 0xde, 0x87, 0x02,
+	0x0d, 0xf9, 0x20, 0x92, 0x65, 0x54, 0x43, 0x7b, 0x9b, 0xad, 0x5b, 0x7f, 0xae, 0xaa, 0x37, 0x47,
+	0x34, 0x0c, 0x1e, 0xdb, 0xba, 0x6e, 0x13, 0x23, 0xb0, 0x8f, 0xa0, 0xf0, 0x7a, 0x10, 0xc7, 0xc1,
+	0x28, 0x1d, 0x0a, 0xfb, 0x91, 0x64, 0xfe, 0xfc, 0x90, 0xae, 0xdb, 0xc4, 0x08, 0xec, 0x32, 0xdc,
+	0x79, 0x95, 0xfe, 0xcf, 0xe9, 0x4a, 0xc2, 0xce, 0x07, 0x4c, 0x48, 0xfb, 0x09, 0xdc, 0x9d, 0xeb,
+	0x88, 0x98, 0x47, 0x82, 0xe1, 0x3a, 0xdc, 0x90, 0x5c, 0xd2, 0xa0, 0x33, 0x8b, 0x46, 0x8a, 0xaa,
+	0x76, 0xa2, 0x61, 0x4a, 0x80, 0xd5, 0xb4, 0x26, 0x9a, 0x78, 0x12, 0xb8, 0x9d, 0xa9, 0x1a, 0xbf,
+	0x63, 0x28, 0x08, 0x55, 0x51, 0x4e, 0xc5, 0xe6, 0xb6, 0xb3, 0xf0, 0xba, 0x1d, 0x3d, 0xd6, 0x5a,
+	0xbf, 0xbc, 0xaa, 0xfe, 0x47, 0xcc, 0x88, 0xbd, 0x65, 0x3c, 0xc9, 0x69, 0xfb, 0x59, 0x5f, 0xc8,
+	0xc9, 0xaa, 0x0b, 0x04, 0xa5, 0x6c, 0xdd, 0x2c, 0x3b, 0x81, 0x62, 0xc2, 0xbc, 0x4e, 0xc2, 0x3c,
+	0x9e, 0xf8, 0xa2, 0x8c, 0x6a, 0xff, 0xef, 0x15, 0x9b, 0xb5, 0x9c, 0x8d, 0xe4, 0xb4, 0x4d, 0x94,
+	0x90, 0x40, 0xc2, 0x3c, 0x7d, 0x14, 0xf8, 0x18, 0x36, 0x53, 0x8b, 0x90, 0x49, 0x2a, 0xca, 0x6b,
+	0xca, 0xc0, 0xca, 0x37, 0x78, 0xce, 0x24, 0x25, 0xd7, 0x13, 0xe6, 0xa5, 0x07, 0xf1, 0xef, 0xc6,
+	0xcf, 0x86, 0x2f, 0xb8, 0xcf, 0x66, 0x91, 0x5f, 0x9a, 0x1b, 0x9f, 0xed, 0x18, 0xe8, 0x87, 0xb0,
+	0x11, 0x71, 0x9f, 0x4d, 0x70, 0xab, 0x39, 0xdb, 0xf4, 0xe4, 0xd9, 0x90, 0x68, 0x75, 0xf3, 0xc7,
+	0x3a, 0x6c, 0x28, 0x4b, 0x7c, 0x81, 0x32, 0xb1, 0x3a, 0xc8, 0x31, 0x58, 0x9c, 0x85, 0x8a, 0xb3,
+	0xaa, 0x5c, 0xe3, 0xda, 0xfb, 0x1f, 0x7f, 0xfe, 0xfe, 0xb2, 0xb6, 0x83, 0xeb, 0xee, 0xe2, 0xb0,
+	0x7b, 0x53, 0x92, 0x4f, 0x68, 0x1a, 0xdb, 0x65, 0x5b, 0x32, 0x41, 0xaa, 0x3c, 0x58, 0x45, 0x6a,
+	0x60, 0x76, 0x15, 0x4c, 0x15, 0x6f, 0xe7, 0xc0, 0xe8, 0x1c, 0xe1, 0xcf, 0x08, 0xae, 0x99, 0xac,
+	0xe0, 0xa5, 0xf6, 0xd9, 0xa0, 0x55, 0x1a, 0x2b, 0x69, 0x0d, 0xcb, 0x7d, 0xc5, 0x52, 0xc7, 0xd5,
+	0x1c, 0x96, 0x34, 0x56, 0x41, 0x4a, 0xf0, 0x15, 0x01, 0x4c, 0x73, 0xb0, 0xfc, 0x7b, 0xcd, 0x25,
+	0x69, 0xf9, 0xf7, 0x9a, 0x8f, 0x97, 0xdd, 0x50, 0x58, 0xbb, 0x78, 0xc7, 0xcd, 0x7b, 0x9c, 0x3a,
+	0x69, 0xa0, 0x14, 0x5a, 0xeb, 0xe9, 0xb7, 0xb1, 0x85, 0x2e, 0xc7, 0x16, 0xfa, 0x3e, 0xb6, 0xd0,
+	0xaf, 0xb1, 0x85, 0xde, 0x34, 0x7a, 0x7d, 0xf9, 0x76, 0xd0, 0x75, 0x3c, 0x1e, 0x4e, 0x0c, 0xf4,
+	0xcf, 0x81, 0xf0, 0xdf, 0xb9, 0xc3, 0x89, 0x9b, 0x1c, 0xc5, 0x4c, 0x74, 0x0b, 0xea, 0x99, 0x3b,
+	0xfa, 0x1b, 0x00, 0x00, 0xff, 0xff, 0xcc, 0x3d, 0x7f, 0xef, 0x76, 0x05, 0x00, 0x00,
 }
 
 func (this *Collateral) Equal(that interface{}) bool {
@@ -498,6 +698,126 @@ func (this *QuerySupplyResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *QueryRECListRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QueryRECListRequest)
+	if !ok {
+		that2, ok := that.(QueryRECListRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !bytes.Equal(this.XXX_unrecognized, that1.XXX_unrecognized) {
+		return false
+	}
+	return true
+}
+func (this *QueryRECListResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QueryRECListResponse)
+	if !ok {
+		that2, ok := that.(QueryRECListResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.RecRecords) != len(that1.RecRecords) {
+		return false
+	}
+	for i := range this.RecRecords {
+		if !this.RecRecords[i].Equal(that1.RecRecords[i]) {
+			return false
+		}
+	}
+	if len(this.RecMetas) != len(that1.RecMetas) {
+		return false
+	}
+	for i := range this.RecMetas {
+		if !this.RecMetas[i].Equal(that1.RecMetas[i]) {
+			return false
+		}
+	}
+	if !bytes.Equal(this.XXX_unrecognized, that1.XXX_unrecognized) {
+		return false
+	}
+	return true
+}
+func (this *QueryTxNodeListRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QueryTxNodeListRequest)
+	if !ok {
+		that2, ok := that.(QueryTxNodeListRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if !bytes.Equal(this.XXX_unrecognized, that1.XXX_unrecognized) {
+		return false
+	}
+	return true
+}
+func (this *QueryTxNodeListResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*QueryTxNodeListResponse)
+	if !ok {
+		that2, ok := that.(QueryTxNodeListResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Nodes) != len(that1.Nodes) {
+		return false
+	}
+	for i := range this.Nodes {
+		if !this.Nodes[i].Equal(that1.Nodes[i]) {
+			return false
+		}
+	}
+	if !bytes.Equal(this.XXX_unrecognized, that1.XXX_unrecognized) {
+		return false
+	}
+	return true
+}
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ context.Context
@@ -511,10 +831,14 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type QueryClient interface {
-	// 담보 총량 조회
+	// 🔹 담보 총액 조회
 	Collateral(ctx context.Context, in *QueryCollateralRequest, opts ...grpc.CallOption) (*QueryCollateralResponse, error)
-	// 발행량 조회
+	// 🔹 발행된 총 Supply 조회
 	Supply(ctx context.Context, in *QuerySupplyRequest, opts ...grpc.CallOption) (*QuerySupplyResponse, error)
+	// 🔹 담보로 등록된 모든 REC 조회
+	RECList(ctx context.Context, in *QueryRECListRequest, opts ...grpc.CallOption) (*QueryRECListResponse, error)
+	// 🔹 모든 링크드 리스트 조회
+	TxNodeList(ctx context.Context, in *QueryTxNodeListRequest, opts ...grpc.CallOption) (*QueryTxNodeListResponse, error)
 }
 
 type queryClient struct {
@@ -543,12 +867,34 @@ func (c *queryClient) Supply(ctx context.Context, in *QuerySupplyRequest, opts .
 	return out, nil
 }
 
+func (c *queryClient) RECList(ctx context.Context, in *QueryRECListRequest, opts ...grpc.CallOption) (*QueryRECListResponse, error) {
+	out := new(QueryRECListResponse)
+	err := c.cc.Invoke(ctx, "/cosmos.reward.v1beta1.Query/RECList", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *queryClient) TxNodeList(ctx context.Context, in *QueryTxNodeListRequest, opts ...grpc.CallOption) (*QueryTxNodeListResponse, error) {
+	out := new(QueryTxNodeListResponse)
+	err := c.cc.Invoke(ctx, "/cosmos.reward.v1beta1.Query/TxNodeList", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // QueryServer is the server API for Query service.
 type QueryServer interface {
-	// 담보 총량 조회
+	// 🔹 담보 총액 조회
 	Collateral(context.Context, *QueryCollateralRequest) (*QueryCollateralResponse, error)
-	// 발행량 조회
+	// 🔹 발행된 총 Supply 조회
 	Supply(context.Context, *QuerySupplyRequest) (*QuerySupplyResponse, error)
+	// 🔹 담보로 등록된 모든 REC 조회
+	RECList(context.Context, *QueryRECListRequest) (*QueryRECListResponse, error)
+	// 🔹 모든 링크드 리스트 조회
+	TxNodeList(context.Context, *QueryTxNodeListRequest) (*QueryTxNodeListResponse, error)
 }
 
 // UnimplementedQueryServer can be embedded to have forward compatible implementations.
@@ -560,6 +906,12 @@ func (*UnimplementedQueryServer) Collateral(ctx context.Context, req *QueryColla
 }
 func (*UnimplementedQueryServer) Supply(ctx context.Context, req *QuerySupplyRequest) (*QuerySupplyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Supply not implemented")
+}
+func (*UnimplementedQueryServer) RECList(ctx context.Context, req *QueryRECListRequest) (*QueryRECListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RECList not implemented")
+}
+func (*UnimplementedQueryServer) TxNodeList(ctx context.Context, req *QueryTxNodeListRequest) (*QueryTxNodeListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TxNodeList not implemented")
 }
 
 func RegisterQueryServer(s grpc1.Server, srv QueryServer) {
@@ -602,6 +954,42 @@ func _Query_Supply_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Query_RECList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryRECListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).RECList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cosmos.reward.v1beta1.Query/RECList",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).RECList(ctx, req.(*QueryRECListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Query_TxNodeList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(QueryTxNodeListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(QueryServer).TxNodeList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cosmos.reward.v1beta1.Query/TxNodeList",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(QueryServer).TxNodeList(ctx, req.(*QueryTxNodeListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _Query_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "cosmos.reward.v1beta1.Query",
 	HandlerType: (*QueryServer)(nil),
@@ -613,6 +1001,14 @@ var _Query_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Supply",
 			Handler:    _Query_Supply_Handler,
+		},
+		{
+			MethodName: "RECList",
+			Handler:    _Query_RECList_Handler,
+		},
+		{
+			MethodName: "TxNodeList",
+			Handler:    _Query_TxNodeList_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -812,6 +1208,156 @@ func (m *QuerySupplyResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *QueryRECListRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *QueryRECListRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryRECListRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *QueryRECListResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *QueryRECListResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryRECListResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	if len(m.RecMetas) > 0 {
+		for iNdEx := len(m.RecMetas) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.RecMetas[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintQuery(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.RecRecords) > 0 {
+		for iNdEx := len(m.RecRecords) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.RecRecords[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintQuery(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *QueryTxNodeListRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *QueryTxNodeListRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryTxNodeListRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *QueryTxNodeListResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *QueryTxNodeListResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryTxNodeListResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	if len(m.Nodes) > 0 {
+		for iNdEx := len(m.Nodes) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Nodes[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintQuery(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintQuery(dAtA []byte, offset int, v uint64) int {
 	offset -= sovQuery(v)
 	base := offset
@@ -903,6 +1449,72 @@ func (m *QuerySupplyResponse) Size() (n int) {
 	_ = l
 	l = m.Supply.Size()
 	n += 1 + l + sovQuery(uint64(l))
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *QueryRECListRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *QueryRECListResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.RecRecords) > 0 {
+		for _, e := range m.RecRecords {
+			l = e.Size()
+			n += 1 + l + sovQuery(uint64(l))
+		}
+	}
+	if len(m.RecMetas) > 0 {
+		for _, e := range m.RecMetas {
+			l = e.Size()
+			n += 1 + l + sovQuery(uint64(l))
+		}
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *QueryTxNodeListRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *QueryTxNodeListResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Nodes) > 0 {
+		for _, e := range m.Nodes {
+			l = e.Size()
+			n += 1 + l + sovQuery(uint64(l))
+		}
+	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
 	}
@@ -1325,6 +1937,312 @@ func (m *QuerySupplyResponse) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if err := m.Supply.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQuery(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *QueryRECListRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQuery
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: QueryRECListRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: QueryRECListRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQuery(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *QueryRECListResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQuery
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: QueryRECListResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: QueryRECListResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RecRecords", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RecRecords = append(m.RecRecords, &RECRecord{})
+			if err := m.RecRecords[len(m.RecRecords)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RecMetas", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RecMetas = append(m.RecMetas, &RECMeta{})
+			if err := m.RecMetas[len(m.RecMetas)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQuery(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *QueryTxNodeListRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQuery
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: QueryTxNodeListRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: QueryTxNodeListRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipQuery(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *QueryTxNodeListResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowQuery
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: QueryTxNodeListResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: QueryTxNodeListResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Nodes", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowQuery
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthQuery
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthQuery
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Nodes = append(m.Nodes, &TxNodeTx{})
+			if err := m.Nodes[len(m.Nodes)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

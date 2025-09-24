@@ -10,8 +10,6 @@ import (
 )
 
 func StartVoteMemberConsumer() {
-	fmt.Println("[Kafka: Users] StartVoteMemberConsumer 시작됨")
-
 	brokers := config.KafkaBrokers
 	topic := config.TopicVoteMember
 	partition := int32(0)

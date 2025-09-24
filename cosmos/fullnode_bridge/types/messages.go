@@ -1,5 +1,7 @@
 package types
 
+import rewardtypes "github.com/cosmos/cosmos-sdk/x/reward/types"
+
 type SolarData struct {
 	DeviceID    string   `json:"device_id"`
 	Timestamp   string   `json:"timestamp"`
@@ -67,4 +69,14 @@ type CollateralMessage struct {
 type BurnMessage struct {
 	Address string `json:"address"`
 	Stable  string `json:"stable"`
+}
+
+type BurnResultMessage struct {
+	Address     string                  `json:"address"`      // 소각 요청 계정
+	Stable      string                  `json:"stable"`       // 소각된 stable 양
+	TxHash      string                  `json:"tx_hash"`      // 소각 트랜잭션 해시
+	RECRecords  []rewardtypes.RECRecord `json:"rec_records"`  // 반환된 RECRecord 목록
+	RECMetas    []RECMeta               `json:"rec_metas"`    // 반환된 RECMeta 목록
+	Status      string                  `json:"status"`       // success / error
+	ErrorReason string                  `json:"error_reason"` // 실패 시 에러 사유
 }

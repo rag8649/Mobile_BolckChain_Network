@@ -6,6 +6,7 @@ option go_package = "github.com/cosmos/cosmos-sdk/x/reward/types";
 
 import "gogoproto/gogo.proto";
 import "google/api/annotations.proto";
+import "cosmos/reward/v1beta1/tx.proto"; // 🔹 RECRecord, RECMeta 정의 불러오기
 
 option (gogoproto.equal_all)       = true;
 option (gogoproto.marshaler_all)   = true;
@@ -15,13 +16,10 @@ option (gogoproto.sizer_all)       = true;
 // ----------------------
 // 데이터 구조체
 // ----------------------
-
-// 전체 담보 총량만 관리
 message Collateral {
   string amount = 1 [(gogoproto.moretags) = "yaml:\"amount\""];
 }
 
-// 발행량 기록
 message Supply {
   string minted = 1 [(gogoproto.moretags) = "yaml:\"minted\""];
 }
@@ -30,28 +28,50 @@ message Supply {
 // Query service
 // ----------------------
 service Query {
-  // 담보 총량 조회
+  // 🔹 담보 총액 조회
   rpc Collateral(QueryCollateralRequest) returns (QueryCollateralResponse) {
     option (google.api.http).get = "/cosmos/reward/v1beta1/collateral";
   }
 
-  // 발행량 조회
+  // 🔹 발행된 총 Supply 조회
   rpc Supply(QuerySupplyRequest) returns (QuerySupplyResponse) {
     option (google.api.http).get = "/cosmos/reward/v1beta1/supply";
   }
+
+  // 🔹 담보로 등록된 모든 REC 조회
+  rpc RECList(QueryRECListRequest) returns (QueryRECListResponse) {
+    option (google.api.http).get = "/cosmos/reward/v1beta1/rec_list";
+  }
+
+  // 🔹 모든 링크드 리스트 조회
+  rpc TxNodeList(QueryTxNodeListRequest) returns (QueryTxNodeListResponse) {
+    option (google.api.http).get = "/cosmos/reward/v1beta1/tx_node_list";
+  }
+
 }
 
 // ----------------------
 // Query messages
 // ----------------------
 message QueryCollateralRequest {}
-
 message QueryCollateralResponse {
-  string total_amount = 1;  // 전체 담보량 (stake 단위 총합)
+  string total_amount = 1;
 }
 
 message QuerySupplyRequest {}
-
 message QuerySupplyResponse {
   Supply supply = 1 [(gogoproto.nullable) = false];
+}
+
+// 🔹 REC 조회
+message QueryRECListRequest {}
+message QueryRECListResponse {
+  repeated RECRecord rec_records = 1; // 🔹 tx.proto에서 import
+  repeated RECMeta   rec_metas   = 2; // 🔹 tx.proto에서 import
+}
+
+// 🔹 LinkedList Node 전체 조회
+message QueryTxNodeListRequest {}
+message QueryTxNodeListResponse {
+  repeated TxNodeTx nodes = 1;
 }

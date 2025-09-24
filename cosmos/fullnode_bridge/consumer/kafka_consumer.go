@@ -5,10 +5,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
+	"strings"
+
+	// "strconv"
 	"sync"
 	"time"
 
+	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/fullnode_bridge/producer"
 	"github.com/cosmos/cosmos-sdk/fullnode_bridge/tx"
 	"github.com/cosmos/cosmos-sdk/fullnode_bridge/types"
@@ -20,7 +25,9 @@ import (
 	"crypto/sha256"
 
 	"github.com/btcsuite/btcutil/bech32"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	"golang.org/x/crypto/ripemd160"
+	grpc "google.golang.org/grpc"
 )
 
 type lightTxHandler struct{}
@@ -35,9 +42,12 @@ var (
 	VoteMap   = make(map[string][]SignatureEntry) // hash -> 서명자 목록
 	DeviceID  = make(map[string]string)           // hash -> device_id
 	VoteMutex sync.Mutex
+	clientCtx client.Context // ⚡ 여기서는 타입만 선언
+	GRPCConn  *grpc.ClientConn
 )
 
 var (
+	RECCount        int64
 	VoteMemberCount int // 데이터베이스 멤버 수 기록 변수
 )
 
@@ -63,6 +73,12 @@ type MemberRewardOutputMessage struct {
 
 type VoteMemberMsg struct {
 	Count int `json:"count"`
+}
+
+type BlockCreatorMsg struct {
+	Creator      string  `json:"creator"`
+	Contribution float64 `json:"contribution"`
+	FullnodeID   string  `json:"fullnode_id"`
 }
 
 func (h *lightTxHandler) Setup(_ sarama.ConsumerGroupSession) error   { return nil }
@@ -98,23 +114,23 @@ func (h *lightTxHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 			continue
 		}
 
-		// if !SentLatLng[txMsg.Hash] {
-		// 	var location Location
-		// 	if txMsg.Original != nil {
-		// 		location = Location{
-		// 			Latitude:  txMsg.Original.Location.Latitude,
-		// 			Longitude: txMsg.Original.Location.Longitude,
-		// 		}
-		// 	}
+		if !SentLatLng[txMsg.Hash] {
+			var location Location
+			if txMsg.Original != nil {
+				location = Location{
+					Latitude:  txMsg.Original.Location.Latitude,
+					Longitude: txMsg.Original.Location.Longitude,
+				}
+			}
 
-		// 	// 위도/경도가 모두 0이 아니어야 전송
-		// 	if location.Latitude != 0 && location.Longitude != 0 {
-		// 		sendLocationToKafka(txMsg.Hash, location, config.FullnodeID)
-		// 		SentLatLng[txMsg.Hash] = true
-		// 	} else {
-		// 		fmt.Println("⚠️ 위도/경도 정보 없음 또는 0, Kafka 전송 생략:", txMsg.Hash)
-		// 	}
-		// }
+			// 위도/경도가 모두 0이 아니어야 전송
+			if location.Latitude != 0 && location.Longitude != 0 {
+				// sendLocationToKafka(txMsg.Hash, location, config.FullnodeID)
+				SentLatLng[txMsg.Hash] = true
+			} else {
+				fmt.Println("⚠️ 위도/경도 정보 없음 또는 0, Kafka 전송 생략:", txMsg.Hash)
+			}
+		}
 		VoteMutex.Lock()
 		VoteMap[txMsg.Hash] = append(VoteMap[txMsg.Hash], SignatureEntry{
 			TxMsg:     txMsg,
@@ -137,7 +153,7 @@ func (h *lightTxHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 				fmt.Println("주소 요청 실패:", err)
 			}
 
-			go startVoteTimer(txMsg.Hash)
+			go startVoteTimer(producer.KafkaProducerDevice, txMsg.Hash)
 		}
 		VoteMutex.Unlock()
 
@@ -171,30 +187,11 @@ func PubKeyToAddress(pubKeyBytes []byte) (string, error) { // 주소 변환 함�
 	return address, nil
 }
 
-// 위치 정보 -> 오라클 전송
-// func sendLocationToKafka(hash string, loc Location, senderID string) {
-// 	payload := map[string]interface{}{
-// 		"hash":      hash,
-// 		"location":  loc,
-// 		"sender_id": senderID,
-// 	}
-// 	msgBytes, _ := json.Marshal(payload)
-
-// 	_, _, err := producer.KafkaProducerLatLng.SendMessage(&sarama.ProducerMessage{
-// 		Topic: config.TopicLocationProducer,
-// 		Value: sarama.ByteEncoder(msgBytes),
-// 	})
-// 	if err != nil {
-// 		fmt.Println("[Kafka: Solar data] Location Kafka 전송 실패:", err)
-// 	} else {
-// 		fmt.Println("[Kafka: Solar data] Location Kafka 전송 성공:", string(msgBytes))
-// 	}
-// }
-
-// 해시별로 10초 대기 후 평가
-func startVoteTimer(hash string) {
+func startVoteTimer(producer sarama.SyncProducer, hash string) {
+	// 투표 수집 대기
 	time.Sleep(10 * time.Second)
 
+	// 필요한 데이터만 뽑고 Lock 해제
 	VoteMutex.Lock()
 	entries, ok := VoteMap[hash]
 	if !ok || len(entries) == 0 {
@@ -212,46 +209,83 @@ func startVoteTimer(hash string) {
 		uniqueList = append(uniqueList, k)
 	}
 
-	// 조건 충족하면 트랜잭션 전송
-	if len(unique) >= 1 {
-		txMsg := entries[0].TxMsg
-		fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
-
-		fmt.Printf("[Kafka: Solar data] → 서명자 주소: %v\n", uniqueList)
-
-		SendValidatorMembers(uniqueList) // 서명자 보상 함수
-
-		if addr, ok := deviceAddressMap.Load(DeviceID[txMsg.Hash]); ok {
-			userAddress := addr.(string) // 타입 단언
-
-			if txMsg.Original != nil {
-				fmt.Printf("[Kafka: Solar data] 발전량 보상 지급 시작\n")
-				tx.SendRewardTxSafely(userAddress, txMsg.Original.TotalEnergy, true)
-			} else if txMsg.REC != nil {
-				mwh, err := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
-				if err == nil {
-					tx.SendRewardTxSafely(userAddress, mwh*1000000, true) // MWh → Wh
-				}
-			}
-
-			txHash, err := tx.BroadcastLightTx(txMsg, userAddress)
-			if err != nil {
-				fmt.Println("[Kafka: Solar data] 트랜잭션 전송 실패:", err)
-			} else {
-				fmt.Printf("[Kafka: Solar data] 트랜잭션 전송 성공: %s\n", txHash)
-			}
-
-		} else {
-			fmt.Printf("[Kafka: Solar data] 주소 비어있음\n")
-		}
-
-	}
+	// TxMsg 복사
+	txMsg := entries[0].TxMsg
 
 	// cleanup
 	delete(VoteMap, hash)
 	delete(SentLatLng, hash)
 	delete(RewardWeight, hash)
 	VoteMutex.Unlock()
+
+	// -------------------------
+	// ⚡ Lock 해제 후 처리 시작
+	// -------------------------
+
+	if len(uniqueList) == 0 {
+		return
+	}
+
+	fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
+	fmt.Printf("[Kafka: Solar data] → 서명자 주소: %v\n", uniqueList)
+
+	// 검증자 보상
+	SendValidatorMembers(uniqueList)
+
+	// userAddress 찾기
+	addr, ok := deviceAddressMap.Load(DeviceID[txMsg.Hash])
+	if !ok {
+		fmt.Printf("[Kafka: Solar data] 주소 비어있음 (hash=%s)\n", txMsg.Hash)
+		return
+	}
+	userAddress := addr.(string)
+
+	var power float64
+	if txMsg.Original != nil {
+		power = txMsg.Original.TotalEnergy
+	} else if txMsg.REC != nil {
+		mwh, _ := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
+		power = mwh * 1_000_000 // MWh → Wh
+	}
+
+	txHash, err := tx.BroadcastLightTxWithReward(clientCtx, GRPCConn, txMsg, userAddress, power)
+	if err != nil {
+		fmt.Println("[Kafka: Solar data] 트랜잭션 전송 실패:", err)
+	} else {
+		whAmt := sdk.NewInt(int64(math.Round(power)))
+
+		// AddEnergy 실행
+		recs, contributors, output, err := tx.AddEnergyCLI(userAddress, whAmt, txHash)
+		if err != nil {
+			fmt.Println("[Kafka: AddEnergy] 실행 실패:", err)
+			fmt.Println("출력:", output)
+			return
+		}
+		// fmt.Println("[Kafka: AddEnergy] 실행 결과:", output)
+
+		// REC 발급 조건 확인
+		if recs > 0 {
+			RECCount = recs
+
+			// Kafka로 기여자 리스트 전송
+			data := map[string]interface{}{
+				"fullnode_id":  config.FullnodeID,
+				"contributors": contributors,
+			}
+			bytes, _ := json.Marshal(data)
+
+			kafkaMsg := &sarama.ProducerMessage{
+				Topic: config.TopicContributors,
+				Value: sarama.ByteEncoder(bytes),
+			}
+			_, _, err = producer.SendMessage(kafkaMsg)
+			if err != nil {
+				fmt.Println("[Kafka: Solar data] 기여자 리스트 전송 실패:", err)
+			} else {
+				fmt.Println("[Kafka: Solar data] 기여자 리스트 전송 성공 (RECCount:", RECCount, ")")
+			}
+		}
+	}
 }
 
 func requestDeviceAddress(producer sarama.SyncProducer, deviceId string) error { // 주소 요청 함수
@@ -359,97 +393,6 @@ func SendValidatorMembers(uniqueList []string) error {
 	return nil
 }
 
-func StartVMemberConsumer() {
-	brokers := config.KafkaBrokers
-	topic := config.TopicResultVMemberReward
-	partition := int32(0) // 토픽 파티션 고정 "result-location-topic"
-
-	cfg := sarama.NewConfig()
-	cfg.Version = sarama.V2_1_0_0
-
-	consumer, err := sarama.NewConsumer(brokers, cfg)
-	if err != nil {
-		panic(fmt.Sprintf("[Kafka: Member Reward] 단일 Consumer 생성 실패: %v", err))
-	}
-
-	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetNewest)
-	if err != nil {
-		panic(fmt.Sprintf("[Kafka: Member Reward] 파티션 구독 실패: %v", err))
-	}
-
-	go func() {
-		fmt.Println("[Kafka: Member Reward] 응답 수신 대기 중...")
-		for msg := range partitionConsumer.Messages() {
-			fmt.Println("[Kafka: Member Reward] 수신된 메시지:", string(msg.Value))
-
-			var outputMsg MemberRewardOutputMessage
-			if err := json.Unmarshal(msg.Value, &outputMsg); err != nil {
-				fmt.Println("[Kafka: Member Reward] 메시지 파싱 실패:", err)
-				continue
-			}
-
-			// ⚠️ 필터링: 내 노드가 보낸 메시지인지 확인
-			if outputMsg.SenderID != config.FullnodeID {
-				fmt.Printf("[Kafka: Member Reward] id: %s\n", outputMsg.SenderID)
-				continue // 내 응답 아님, 무시
-			}
-
-			// ✅ Rewards 맵 순회하면서 트랜잭션 전송
-			for addr, reward := range outputMsg.Rewards {
-				fmt.Printf("[Kafka: Member Reward] 서명자 보상 지급 시작 → 주소: %s, 보상: %f\n", addr, reward)
-				if err := tx.SendRewardTxSafely(addr, reward, false); err != nil {
-					fmt.Printf("[Kafka: Member Reward] 보상 트랜잭션 실패 (addr=%s): %v\n", addr, err)
-				}
-			}
-		}
-	}()
-
-}
-
-// func StartLocationOutputConsumer() {
-// 	brokers := config.KafkaBrokers
-// 	topic := config.TopicLocationResult
-// 	partition := int32(0) // 토픽 파티션 고정 "result-location-topic"
-
-// 	cfg := sarama.NewConfig()
-// 	cfg.Version = sarama.V2_1_0_0
-
-// 	consumer, err := sarama.NewConsumer(brokers, cfg)
-// 	if err != nil {
-// 		panic(fmt.Sprintf("[Kafka: Location] 단일 Consumer 생성 실패: %v", err))
-// 	}
-
-// 	partitionConsumer, err := consumer.ConsumePartition(topic, partition, sarama.OffsetNewest)
-// 	if err != nil {
-// 		panic(fmt.Sprintf("[Kafka: Location] 파티션 구독 실패: %v", err))
-// 	}
-
-// 	// ✅ 메시지 수신 루프
-// 	go func() {
-// 		fmt.Println("[Kafka: Location] 응답 수신 대기 중...")
-// 		for msg := range partitionConsumer.Messages() {
-// 			fmt.Println("[Kafka: Location] 수신된 메시지:", string(msg.Value))
-
-// 			var outputMsg LocationOutputMessage
-// 			if err := json.Unmarshal(msg.Value, &outputMsg); err != nil {
-// 				fmt.Println("[Kafka: Location] 메시지 파싱 실패:", err)
-// 				continue
-// 			}
-
-// 			// ⚠️ 필터링: 내 노드가 보낸 메시지인지 확인 (선택적으로 추가)
-// 			if outputMsg.SenderID != config.FullnodeID {
-// 				fmt.Printf("[Kafka: Location] id: %s\n", outputMsg.SenderID)
-// 				continue // 내 응답 아님, 무시
-// 			}
-
-// 			RewardWeight[outputMsg.Hash] = outputMsg.Output
-// 			// ✅ 처리 로직
-// 			fmt.Printf("[Kafka: Location] 해시: %s, 보상 가중치: %f\n", outputMsg.Hash, RewardWeight[outputMsg.Hash])
-
-// 		}
-// 	}()
-// }
-
 func StartSolarKafkaConsumer() {
 	brokers := config.KafkaBrokers
 	topic := config.TopicLightTx
@@ -475,7 +418,141 @@ func StartSolarKafkaConsumer() {
 		}
 	}()
 
+	clientCtx, GRPCConn, _ = NewClientCtx045()
 	fmt.Println("[Kafka: Solar data] Kafka Consumer Group 수신 대기 중...")
+}
+
+// 🔹 Cosmos SDK tx 결과 구조체
+type TxResponse struct {
+	Height string `json:"height"`
+	TxHash string `json:"txhash"`
+	Code   int    `json:"code"`
+	Logs   []struct {
+		Events []struct {
+			Type       string `json:"type"`
+			Attributes []struct {
+				Key   string `json:"key"`
+				Value string `json:"value"`
+			} `json:"attributes"`
+		} `json:"events"`
+	} `json:"logs"`
+}
+
+func StartBlockCreatorConsumer() {
+	brokers := config.KafkaBrokers
+	topic := config.TopicBlockCreator
+
+	cfg := sarama.NewConfig()
+	cfg.Version = sarama.V2_1_0_0
+
+	consumer, err := sarama.NewConsumer(brokers, cfg)
+	if err != nil {
+		panic(fmt.Sprintf("[Kafka: BlockCreator] Consumer 생성 실패: %v", err))
+	}
+
+	partitionConsumer, err := consumer.ConsumePartition(topic, 0, sarama.OffsetNewest)
+	if err != nil {
+		panic(fmt.Sprintf("[Kafka: BlockCreator] 파티션 구독 실패: %v", err))
+	}
+
+	fmt.Println("[Kafka: BlockCreator] Consumer 수신 대기 중...")
+
+	go func() {
+		for msg := range partitionConsumer.Messages() {
+			handleBlockCreatorMessage(msg.Value)
+		}
+	}()
+}
+
+func handleBlockCreatorMessage(msg []byte) {
+	var data BlockCreatorMsg
+	if err := json.Unmarshal(msg, &data); err != nil {
+		fmt.Printf("[Kafka: BlockCreator] JSON 파싱 실패: %v\n", err)
+		return
+	}
+
+	// 🔹 Fullnode 검증
+	if data.FullnodeID != config.FullnodeID {
+		fmt.Printf("[Kafka: BlockCreator] Fullnode ID 불일치 → 무시 (got=%s, expected=%s)\n",
+			data.FullnodeID, config.FullnodeID)
+		return
+	}
+
+	fmt.Printf("[Kafka: BlockCreator] 블록 생성자: %s\n", data.Creator)
+
+	// === 최종 REC 발급 ===
+	if RECCount <= 0 {
+		fmt.Println("[Kafka: BlockCreator] 발급할 REC 없음 (RECCount=0)")
+		return
+	}
+
+	fmt.Printf("[Kafka: BlockCreator] REC 발급 시작 (count=%d)\n", RECCount)
+	output, err := tx.CreateRECRecordCLI(RECCount)
+	if err != nil {
+		fmt.Println("[Kafka: REC 발급] 실패:", err)
+		RECCount = 0
+		return
+	}
+
+	fmt.Println("[Kafka: REC 발급] 성공:")
+
+	// 🔹 JSON 부분만 추출
+	idx := strings.Index(output, "{")
+	if idx == -1 {
+		fmt.Println("[Kafka: REC 발급] 출력에서 JSON 시작점을 찾을 수 없음")
+		RECCount = 0
+		return
+	}
+	jsonPart := output[idx:]
+
+	// 🔹 TxResponse 파싱
+	var resp TxResponse
+	if err := json.Unmarshal([]byte(jsonPart), &resp); err != nil {
+		fmt.Println("[Kafka: REC 발급] JSON 파싱 실패:", err)
+		RECCount = 0
+		return
+	}
+
+	// 🔹 rec_id 추출 (logs에서 그대로 사용)
+	recID := extractRecID(resp)
+	if recID == "" {
+		fmt.Println("[Kafka: REC 발급] rec_id를 찾을 수 없음")
+		RECCount = 0
+		return
+	}
+
+	// === AppendTxHash 트랜잭션 실행 ===
+	output, err = tx.AppendTxHashCLI(data.Creator, recID)
+	if err != nil {
+		fmt.Println("[Kafka: AppendTxHash] 실패:", err)
+		fmt.Println("출력:", output)
+	} else {
+		fmt.Println("[Kafka: AppendTxHash] 성공:", output)
+	}
+
+	// 발급 후 RECCount 리셋
+	RECCount = 0
+}
+
+// 🔹 rec_id 추출 로직 (logs 기준 → base64 디코딩 불필요)
+func extractRecID(resp TxResponse) string {
+	for _, e := range resp.Logs {
+		for _, ev := range e.Events {
+
+			if ev.Type != "create_rec_record" {
+				continue
+			}
+
+			for _, attr := range ev.Attributes {
+
+				if attr.Key == "rec_id" {
+					return attr.Value
+				}
+			}
+		}
+	}
+	fmt.Println("[extractRecID] rec_id를 찾지 못함")
+	return ""
 }
 
 func StartConsumer() {
@@ -484,9 +561,10 @@ func StartConsumer() {
 	go StartVoteMemberConsumer()    // 회원 수 토픽
 	go StartDeviceAddressConsumer() // 디바이스 id, 주소 매핑 토픽
 
-	go StartCollateralConsumer() // 담보 예치 요청 토픽
-	go StartBurnConsumer()       // 소각 요청 토픽
-	go StartAccountConsumer()    // 회원가입 요청 토픽
-	go StartBalanceConsumer()    // 잔고 확인 토픽
-	go StartVMemberConsumer()    // 서명자 보상 토픽
+	go StartCollateralConsumer()   // 담보 예치 요청 토픽
+	go StartBurnConsumer()         // 소각 요청 토픽
+	go StartAccountConsumer()      // 회원가입 요청 토픽
+	go StartBalanceConsumer()      // 잔고 확인 토픽
+	go StartBlockCreatorConsumer() // 블록 생성
+	go StartRECConsumer()          // REC 가격 조회
 }

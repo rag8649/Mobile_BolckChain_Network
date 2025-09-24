@@ -5,79 +5,134 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/reward/types"
+	gogoproto "github.com/gogo/protobuf/proto" // ✅ gogo protobuf import
 )
 
-// DepositCollateral : stake를 소각하고 KVStore에 담보 총량 반영
-func (k Keeper) DepositCollateral(ctx sdk.Context, from string, amount string) error {
-	coin, err := sdk.ParseCoinNormalized(amount)
+// DepositCollateral : RECRecord 또는 RECMeta를 KVStore에 저장
+func (k Keeper) DepositCollateral(ctx sdk.Context, msg *types.MsgDepositCollateral) error {
+	// Creator 유효성 확인
+	_, err := sdk.AccAddressFromBech32(msg.Creator)
 	if err != nil {
-		return fmt.Errorf("잘못된 코인 형식: %s", amount)
-	}
-	if coin.Denom != "stake" {
-		return fmt.Errorf("담보는 stake만 가능합니다: %s", coin.Denom)
+		return fmt.Errorf("invalid creator address: %w", err)
 	}
 
-	fromAddr, err := sdk.AccAddressFromBech32(from)
-	if err != nil {
-		return err
-	}
-
-	// 1. from → 모듈 계정 전송 후 소각
-	if err := k.bankKeeper.SendCoinsFromAccountToModule(ctx, fromAddr, types.ModuleName, sdk.NewCoins(coin)); err != nil {
-		return err
-	}
-	if err := k.bankKeeper.BurnCoins(ctx, types.ModuleName, sdk.NewCoins(coin)); err != nil {
-		return err
-	}
-
-	// 2. 전체 담보 총량 갱신
-	oldAmt := k.GetTotalCollateral(ctx)
-	newAmt := oldAmt.Add(coin.Amount)
-	k.SetTotalCollateral(ctx, newAmt)
-
-	ctx.Logger().Info("[Collateral] 총량 갱신",
-		"prev", oldAmt.String(),
-		"add", coin.Amount.String(),
-		"new", newAmt.String(),
-	)
-
-	return nil
-}
-
-// GetTotalCollateral : 전체 담보량을 sdk.Int 로 반환
-func (k Keeper) GetTotalCollateral(ctx sdk.Context) sdk.Int {
 	store := ctx.KVStore(k.storeKey)
-	bz := store.Get([]byte(types.CollateralKey))
-	if bz == nil {
-		return sdk.ZeroInt()
+
+	// RECRecord 저장
+	if rec := msg.GetRecRecord(); rec != nil {
+		bz, err := gogoproto.Marshal(rec)
+		if err != nil {
+			return fmt.Errorf("failed to marshal RECRecord: %w", err)
+		}
+		key := []byte(fmt.Sprintf("%s/%s", types.RecRecordKey, rec.RecId))
+		store.Set(key, bz)
+
+		ctx.Logger().Info("[Collateral] RECRecord 저장",
+			"rec_id", rec.RecId,
+			"block_height", rec.BlockHeight,
+			"total_energy", rec.TotalEnergy,
+		)
+		return nil
 	}
-	amt, ok := sdk.NewIntFromString(string(bz))
-	if !ok {
-		return sdk.ZeroInt()
+
+	// RECMeta 저장
+	if meta := msg.GetRecMeta(); meta != nil {
+		bz, err := gogoproto.Marshal(meta)
+		if err != nil {
+			return fmt.Errorf("failed to marshal RECMeta: %w", err)
+		}
+		key := []byte(fmt.Sprintf("%s/%s", types.RecMetaKey, meta.CertifiedId))
+		store.Set(key, bz)
+
+		ctx.Logger().Info("[Collateral] RECMeta 저장",
+			"certified_id", meta.CertifiedId,
+			"facility_id", meta.FacilityId,
+			"measured_volume", meta.MeasuredVolumeMwh,
+		)
+		return nil
 	}
-	return amt
+
+	return fmt.Errorf("invalid message: neither RECRecord nor RECMeta provided")
 }
 
-// SetTotalCollateral : sdk.Int 를 string으로 저장
-func (k Keeper) SetTotalCollateral(ctx sdk.Context, amt sdk.Int) {
+// GetAllRECRecords : 저장된 모든 RECRecord 조회
+func (k Keeper) GetAllRECRecords(ctx sdk.Context) ([]*types.RECRecord, error) {
 	store := ctx.KVStore(k.storeKey)
-	store.Set([]byte(types.CollateralKey), []byte(amt.String()))
+	iterator := sdk.KVStorePrefixIterator(store, []byte(types.RecRecordKey+"/"))
+	defer iterator.Close()
+
+	var records []*types.RECRecord
+	for ; iterator.Valid(); iterator.Next() {
+		var rec types.RECRecord
+		if err := gogoproto.Unmarshal(iterator.Value(), &rec); err != nil {
+			return nil, err
+		}
+		records = append(records, &rec)
+	}
+	return records, nil
 }
 
+// GetAllRECMetas : 저장된 모든 RECMeta 조회
+func (k Keeper) GetAllRECMetas(ctx sdk.Context) ([]*types.RECMeta, error) {
+	store := ctx.KVStore(k.storeKey)
+	iterator := sdk.KVStorePrefixIterator(store, []byte(types.RecMetaKey+"/"))
+	defer iterator.Close()
+
+	var metas []*types.RECMeta
+	for ; iterator.Valid(); iterator.Next() {
+		var meta types.RECMeta
+		if err := gogoproto.Unmarshal(iterator.Value(), &meta); err != nil {
+			return nil, err
+		}
+		metas = append(metas, &meta)
+	}
+	return metas, nil
+}
+
+// GetTotalCollateral : 저장된 REC 개수를 sdk.Int로 반환
+func (k Keeper) GetTotalCollateral(ctx sdk.Context) (sdk.Int, error) {
+	count := int64(0)
+
+	store := ctx.KVStore(k.storeKey)
+
+	iterRecord := sdk.KVStorePrefixIterator(store, []byte(types.RecRecordKey+"/"))
+	defer iterRecord.Close()
+	for ; iterRecord.Valid(); iterRecord.Next() {
+		count++
+	}
+
+	iterMeta := sdk.KVStorePrefixIterator(store, []byte(types.RecMetaKey+"/"))
+	defer iterMeta.Close()
+	for ; iterMeta.Valid(); iterMeta.Next() {
+		count++
+	}
+
+	return sdk.NewInt(count), nil
+}
+
+// SetSupply : Supply 구조체를 KVStore에 저장
 func (k Keeper) SetSupply(ctx sdk.Context, s types.Supply) {
 	store := ctx.KVStore(k.storeKey)
-	bz := k.cdc.MustMarshal(&s)
+	bz, err := gogoproto.Marshal(&s)
+	if err != nil {
+		panic(fmt.Errorf("failed to marshal Supply: %w", err))
+	}
 	store.Set([]byte(types.SupplyKey), bz)
 }
 
+// GetSupply : KVStore에서 Supply 구조체를 불러오기
 func (k Keeper) GetSupply(ctx sdk.Context) types.Supply {
 	store := ctx.KVStore(k.storeKey)
 	bz := store.Get([]byte(types.SupplyKey))
 	if bz == nil {
-		return types.Supply{Minted: "0"} // 기본값 "0"
+		return types.Supply{Minted: "0"} // 기본값
 	}
+
 	var s types.Supply
-	k.cdc.MustUnmarshal(bz, &s)
+	if err := gogoproto.Unmarshal(bz, &s); err != nil {
+		panic(fmt.Errorf("failed to unmarshal Supply: %w", err))
+	}
+
 	if s.Minted == "" {
 		s.Minted = "0"
 	}

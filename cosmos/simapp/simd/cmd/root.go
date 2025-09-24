@@ -162,7 +162,6 @@ func initRootCmd(rootCmd *cobra.Command, encodingConfig params.EncodingConfig) {
 		// 기존 모듈 초기화 플래그 추가
 		addModuleInitFlags(startCmd)
 
-		// ⬇️ 여기에 Kafka consumer 실행 로직을 삽입
 		startCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 			fmt.Println("Operate Kafka consumer")
 			// 카프카 연동 시작
@@ -269,7 +268,8 @@ func (a appCreator) newApp(logger log.Logger, db dbm.DB, traceStore io.Writer, a
 		panic(err)
 	}
 
-	return simapp.NewSimApp(
+	// 수정한 부분
+	app := simapp.NewSimApp(
 		logger, db, traceStore, true, skipUpgradeHeights,
 		cast.ToString(appOpts.Get(flags.FlagHome)),
 		cast.ToUint(appOpts.Get(server.FlagInvCheckPeriod)),
@@ -287,6 +287,11 @@ func (a appCreator) newApp(logger log.Logger, db dbm.DB, traceStore io.Writer, a
 		baseapp.SetSnapshotInterval(cast.ToUint64(appOpts.Get(server.FlagStateSyncSnapshotInterval))),
 		baseapp.SetSnapshotKeepRecent(cast.ToUint32(appOpts.Get(server.FlagStateSyncSnapshotKeepRecent))),
 	)
+
+	fullnodebridge.SetKeeper(app.RewardKeeper)
+	fullnodebridge.SetApp(app)
+	return app
+	// 수정한 부분
 }
 
 // appExport creates a new simapp (optionally at a given height)
