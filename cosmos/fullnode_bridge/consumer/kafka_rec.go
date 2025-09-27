@@ -102,7 +102,7 @@ func CheckLiquidation() {
 
 	// 3. 담보 가치 계산
 	collateralValue := totalCollateral * config.CurrentRECPrice
-	totalSupply = 100 * totalSupply
+	totalSupply = (totalSupply / 1000000) * config.CurrentRECPrice
 	// 4. 비교
 	log.Printf("담보량=%.2f, 가격=%.2f → 담보가치=%.2f | 공급량=%.2f",
 		totalCollateral, config.CurrentRECPrice, collateralValue, totalSupply)

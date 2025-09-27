@@ -32,12 +32,46 @@ func (m *msgServer) RewardSolarPower(goCtx context.Context, msg *types.MsgReward
 func (m msgServer) BurnStableCoin(goCtx context.Context, msg *types.MsgBurnStableCoin) (*types.MsgBurnStableCoinResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 
+	// Keeper 호출
 	resp, err := m.Keeper.BurnStableCoin(ctx, msg.TargetAddr, msg.Amount)
 	if err != nil {
 		return nil, err
 	}
-	return resp, nil
 
+	// === 이벤트 발행 (CLI JSON 로그에 노출) ===
+	ctx.EventManager().EmitEvent(
+		sdk.NewEvent("burn_stable_coin",
+			sdk.NewAttribute("target", msg.TargetAddr),
+			sdk.NewAttribute("amount", msg.Amount),
+			sdk.NewAttribute("returned_records", fmt.Sprintf("%d", len(resp.RecRecords))),
+			sdk.NewAttribute("returned_metas", fmt.Sprintf("%d", len(resp.RecMetas))),
+		),
+	)
+
+	// RECRecord 상세 이벤트
+	for _, rec := range resp.RecRecords {
+		bz, _ := json.Marshal(rec)
+		ctx.EventManager().EmitEvent(
+			sdk.NewEvent("rec_record_returned",
+				sdk.NewAttribute("rec_id", rec.RecId),
+				sdk.NewAttribute("data", string(bz)),
+			),
+		)
+	}
+
+	// RECMeta 상세 이벤트
+	for _, meta := range resp.RecMetas {
+		bz, _ := json.Marshal(meta)
+		ctx.EventManager().EmitEvent(
+			sdk.NewEvent("rec_meta_returned",
+				sdk.NewAttribute("certified_id", meta.CertifiedId),
+				sdk.NewAttribute("data", string(bz)),
+			),
+		)
+	}
+
+	// 최종 응답 반환
+	return resp, nil
 }
 
 func (m msgServer) DepositCollateral(goCtx context.Context, msg *types.MsgDepositCollateral) (*types.MsgDepositCollateralResponse, error) {

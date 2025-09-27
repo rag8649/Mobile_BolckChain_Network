@@ -29,7 +29,7 @@ func (h *burnHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sa
 		if err := json.Unmarshal(msg.Value, &burnMsg); err != nil {
 			fmt.Println("[Kafka: Burn] 메시지 파싱 실패:", err)
 
-			// 실패 메시지 전송 (Stable에 "err" 표시)
+			// 실패 메시지 전송
 			burnMsg.Stable = "err"
 			encoded, _ := json.Marshal(burnMsg)
 			h.producer.SendMessage(&sarama.ProducerMessage{
@@ -39,7 +39,7 @@ func (h *burnHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sa
 			continue
 		}
 
-		// 소각 실행
+		// === 소각 실행 ===
 		result, err := tx.BurnStableCoin(burnMsg.Address, burnMsg.Stable)
 		if err != nil {
 			fmt.Printf("[Kafka: Burn] 소각 실패: %v\n", err)
@@ -54,24 +54,18 @@ func (h *burnHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sa
 			continue
 		}
 
-		burnResult := types.BurnResultMessage{
-			Address: burnMsg.Address,
-			Stable:  burnMsg.Stable,
+		// === 결과 메시지 구성 ===
+		burnResult := tx.BurnResultMessage{
+			Address:    burnMsg.Address,
+			Status:     result.Status,
+			TxHash:     result.TxHash,
+			RecRecords: result.RecRecords, // ✅ REC 반환 내역 포함
+			RecMetas:   result.RecMetas,   // ✅ Meta 반환 내역 포함
 		}
 
-		if err != nil {
-			burnResult.Status = "error"
-			burnResult.ErrorReason = err.Error()
-		} else {
-			burnResult.Status = "success"
-			burnResult.RECRecords = result.RECRecords
-			burnResult.RECMetas = result.RECMetas
-			burnResult.TxHash = result.TxHash
-		}
+		fmt.Printf("[Kafka: Burn] 소각 성공: %+v\n", burnResult)
 
-		fmt.Printf("[Kafka: Burn] 소각 성공: %v\n", result)
-
-		// 성공 메시지 전송
+		// === Kafka 전송 ===
 		encoded, err := json.Marshal(burnResult)
 		if err != nil {
 			fmt.Println("[Kafka: Burn] JSON 직렬화 실패:", err)

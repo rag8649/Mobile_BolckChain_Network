@@ -41,8 +41,8 @@ func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) erro
 	}
 	ctx.Logger().Info("[RewardSolarPower] amount 변환 성공 (Wh)", "whAmt", whAmt.String())
 
-	// 2. Wh → stable 변환 (1 stable = 1000 Wh)
-	stableUnit := sdk.NewInt(1000)
+	// 2. Wh → stable 변환 (1 stable = 1Wh)
+	stableUnit := sdk.NewInt(1)
 	stableAmt := whAmt.Quo(stableUnit) // 발행할 stable 수량
 	ctx.Logger().Info("[RewardSolarPower] Stable 수량 계산", "stableAmt", stableAmt.String())
 
@@ -56,8 +56,8 @@ func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) erro
 
 	newTotal := minted.Add(stableAmt)
 
-	// 담보 가치 = REC 개수 × 1000 stable (1REC = 1000 stable)
-	collateralValueStable := collateralAmt.Mul(sdk.NewInt(1000))
+	// 담보 가치 = REC 개수 × 1000 stable (1REC = 1,000,000 stable)
+	collateralValueStable := collateralAmt.Mul(sdk.NewInt(1000000))
 
 	if newTotal.GT(collateralValueStable) {
 		return fmt.Errorf("[RewardSolarPower] 발행량 초과: 담보 부족 (collateral=%s REC → %s stable, minted=%s, requested=%s)",

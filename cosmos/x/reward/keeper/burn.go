@@ -9,7 +9,6 @@ import (
 )
 
 func (k Keeper) BurnStableCoin(ctx sdk.Context, target string, amount string) (*types.MsgBurnStableCoinResponse, error) {
-
 	var returnedRecords []*types.RECRecord
 	var returnedMetas []*types.RECMeta
 
@@ -20,10 +19,8 @@ func (k Keeper) BurnStableCoin(ctx sdk.Context, target string, amount string) (*
 
 	targetAddr, err := sdk.AccAddressFromBech32(target)
 	if err != nil {
-		return nil, fmt.Errorf("[Burn] 잘못된 주소 형식: %s, err: %v", target, err)
-	}
-
-	// 1. stable → 모듈 계정 이동 후 소각
+		return nil, fmt.Errorf("[Burn] 잘못된 주소 형식: %s, err: %v", target, err) //
+	} // 1. stable → 모듈 계정 이동 후 소각
 	if err := k.bankKeeper.SendCoinsFromAccountToModule(ctx, targetAddr, types.ModuleName, sdk.NewCoins(coin)); err != nil {
 		return nil, err
 	}
@@ -32,13 +29,12 @@ func (k Keeper) BurnStableCoin(ctx sdk.Context, target string, amount string) (*
 	}
 	ctx.Logger().Info("[Burn] StableCoin 소각 완료", "amount", coin.String())
 
-	// 2. 소각된 stable에 상응하는 REC 개수 계산 (예: 1 REC = 1,000,000 stable)
-	oneREC := sdk.NewInt(1000) // 정책적으로 정한 비율
+	// 2. 소각된 stable에 상응하는 REC 개수 계산
+	oneREC := sdk.NewInt(1000000) // 정책적으로 정한 비율
 	recToReturn := coin.Amount.Quo(oneREC)
 
 	if recToReturn.IsPositive() {
 		returned := int64(0)
-
 		store := ctx.KVStore(k.storeKey)
 
 		// RECRecord 반환 + 삭제
@@ -101,8 +97,33 @@ func (k Keeper) BurnStableCoin(ctx sdk.Context, target string, amount string) (*
 	)
 
 	// ✅ 반환된 REC 목록을 응답에 담아서 리턴
-	return &types.MsgBurnStableCoinResponse{
+	resp := &types.MsgBurnStableCoinResponse{
 		RecRecords: returnedRecords,
 		RecMetas:   returnedMetas,
-	}, nil
+	}
+
+	// 🔥 최종 결과 전체 로그 출력
+	for _, rec := range resp.RecRecords {
+		ctx.Logger().Info("[Burn:Result] RECRecord",
+			"rec_id", rec.RecId,
+			"issued_at", rec.IssuedAt,
+			"block_height", rec.BlockHeight,
+			"total_energy", rec.TotalEnergy,
+			"contributors", rec.Contributors,
+			"source_tx", rec.SourceTx,
+		)
+	}
+	for _, meta := range resp.RecMetas {
+		ctx.Logger().Info("[Burn:Result] RECMeta",
+			"facility_id", meta.FacilityId,
+			"facility_name", meta.FacilityName,
+			"location", meta.Location,
+			"capacity_mw", meta.CapacityMw,
+			"certified_id", meta.CertifiedId,
+			"status", meta.Status,
+			"timestamp", meta.Timestamp,
+		)
+	}
+
+	return resp, nil
 }
