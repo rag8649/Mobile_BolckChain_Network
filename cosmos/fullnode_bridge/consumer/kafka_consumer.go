@@ -189,7 +189,7 @@ func PubKeyToAddress(pubKeyBytes []byte) (string, error) { // 주소 변환 함�
 
 func startVoteTimer(producer sarama.SyncProducer, hash string) {
 	// 투표 수집 대기
-	time.Sleep(10 * time.Second)
+	time.Sleep(5 * time.Second)
 
 	// 필요한 데이터만 뽑고 Lock 해제
 	VoteMutex.Lock()

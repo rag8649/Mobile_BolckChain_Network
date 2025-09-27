@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/cosmos/cosmos-sdk/codec"
-	"github.com/cosmos/cosmos-sdk/fullnode_bridge/config"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/reward/types"
 )
@@ -25,7 +24,6 @@ func NewKeeper(cdc codec.BinaryCodec, key sdk.StoreKey, bankKeeper types.BankKee
 	}
 }
 
-// RewardSolarPower 수정본
 func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) error {
 	ctx.Logger().Info("[RewardSolarPower] 함수 호출 시작",
 		"to", to,
@@ -33,36 +31,23 @@ func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) erro
 	)
 
 	if k.bankKeeper == nil {
-		ctx.Logger().Error("[RewardSolarPower] bankKeeper is nil")
 		panic("bankKeeper is nil")
 	}
 
-	// Wh 단위 입력값 변환
+	// 1. Wh 입력 변환
 	whAmt, ok := sdk.NewIntFromString(amount)
 	if !ok {
-		ctx.Logger().Error("[RewardSolarPower] amount 변환 실패", "amount", amount)
 		return fmt.Errorf("잘못된 amount 형식: %s", amount)
 	}
 	ctx.Logger().Info("[RewardSolarPower] amount 변환 성공 (Wh)", "whAmt", whAmt.String())
-	// 1REC = 1,000,000 Wh
-	recUnit := sdk.NewInt(1_000_000)
 
-	// REC 개수 = Wh / 1,000,000
-	recCount := whAmt.Quo(recUnit)
-
-	// REC 가격 (원화)
-	priceInt := sdk.NewInt(int64(config.CurrentRECPrice))
-
-	// 총 원화 가치 = REC 개수 * REC 가격
-	totalValueKRW := recCount.Mul(priceInt)
-
-	// stable 변환 (1 stable = 100원)
-	stableUnit := sdk.NewInt(100)
-	stableAmt := totalValueKRW.Quo(stableUnit)
+	// 2. Wh → stable 변환 (1 stable = 1000 Wh)
+	stableUnit := sdk.NewInt(1000)
+	stableAmt := whAmt.Quo(stableUnit) // 발행할 stable 수량
 	ctx.Logger().Info("[RewardSolarPower] Stable 수량 계산", "stableAmt", stableAmt.String())
 
-	// === 기존 로직 (담보 체크, 발행 등) ===
-	collateralAmt, err := k.GetTotalCollateral(ctx)
+	// 3. 담보 조회 (REC 단위)
+	collateralAmt, err := k.GetTotalCollateral(ctx) // REC 개수
 	if err != nil {
 		ctx.Logger().Error("[RewardSolarPower] 담보 조회 실패")
 	}
@@ -71,12 +56,12 @@ func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) erro
 
 	newTotal := minted.Add(stableAmt)
 
-	// 담보 가치 = 담보 REC 수량 × REC 가격
-	collateralValue := collateralAmt.Mul(priceInt)
+	// 담보 가치 = REC 개수 × 1000 stable (1REC = 1000 stable)
+	collateralValueStable := collateralAmt.Mul(sdk.NewInt(1000))
 
-	if newTotal.GT(collateralValue) {
-		return fmt.Errorf("[RewardSolarPower] 발행량 초과: 담보 부족 (collateralValue=%s, minted=%s, requested=%s)",
-			collateralValue.String(), minted.String(), stableAmt.String())
+	if newTotal.GT(collateralValueStable) {
+		return fmt.Errorf("[RewardSolarPower] 발행량 초과: 담보 부족 (collateral=%s REC → %s stable, minted=%s, requested=%s)",
+			collateralAmt.String(), collateralValueStable.String(), minted.String(), stableAmt.String())
 	}
 
 	// 4. stable 발행 및 전송
@@ -86,7 +71,7 @@ func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) erro
 	feeAmt := stableAmt.ToDec().Mul(sdk.NewDecWithPrec(1, 1)).TruncateInt() // stableAmt * 0.1
 	feeCoins := sdk.NewCoins(sdk.NewCoin("stable", feeAmt))
 
-	// 사용자에게 줄 금액
+	// 사용자 금액
 	userAmt := stableAmt.Sub(feeAmt)
 	userCoins := sdk.NewCoins(sdk.NewCoin("stable", userAmt))
 
@@ -100,12 +85,11 @@ func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) erro
 		return err
 	}
 
-	// 사용자에게 전송
+	// 사용자에게 지급
 	if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, toAddr, userCoins); err != nil {
 		return err
 	}
 
-	// 수수료는 모듈 계좌에 남김
 	ctx.Logger().Info("[RewardSolarPower] 수수료 적립 완료", "feeCoins", feeCoins.String())
 
 	// 발행량 갱신
