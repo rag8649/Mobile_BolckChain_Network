@@ -18,7 +18,7 @@ echo "=== 2️⃣ Add key ($KEY_NAME) ==="
   --keyring-backend $KEYRING
 
 echo "=== 3️⃣ Add genesis account ==="
-./build/simd add-genesis-account $KEY_NAME 100000000${DENOM} \
+./build/simd add-genesis-account $KEY_NAME 100000000000${DENOM} \
   --home $HOME_DIR \
   --keyring-backend $KEYRING
 
@@ -30,8 +30,4 @@ echo "=== 4️⃣ Generate staking transaction ==="
 
 echo "=== 5️⃣ Collect gentxs ==="
 ./build/simd collect-gentxs \
-  --home $HOME_DIR
-
-echo "=== 6️⃣ Start node ==="
-./build/simd start \
   --home $HOME_DIR
