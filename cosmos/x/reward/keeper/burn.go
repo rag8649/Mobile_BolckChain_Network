@@ -27,7 +27,7 @@ func (k Keeper) BurnStableCoin(ctx sdk.Context, target string, amount string) (*
 	if err := k.bankKeeper.BurnCoins(ctx, types.ModuleName, sdk.NewCoins(coin)); err != nil {
 		return nil, err
 	}
-	ctx.Logger().Info("[Burn] StableCoin 소각 완료", "amount", coin.String())
+	ctx.Logger().Info("[Burn] Coin 소각 완료", "amount", coin.String())
 
 	// 2. 소각된 stable에 상응하는 REC 개수 계산
 	oneREC := sdk.NewInt(1000000) // 정책적으로 정한 비율

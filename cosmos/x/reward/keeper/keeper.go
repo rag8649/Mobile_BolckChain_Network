@@ -43,8 +43,8 @@ func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) erro
 
 	// 2. Wh → stable 변환 (1 stable = 1Wh)
 	stableUnit := sdk.NewInt(1)
-	stableAmt := whAmt.Quo(stableUnit) // 발행할 stable 수량
-	ctx.Logger().Info("[RewardSolarPower] Stable 수량 계산", "stableAmt", stableAmt.String())
+	coinAmt := whAmt.Quo(stableUnit) // 발행할 stable 수량
+	ctx.Logger().Info("[RewardSolarPower] Coin 수량 계산", "coinAmt", coinAmt.String())
 
 	// 3. 담보 조회 (REC 단위)
 	collateralAmt, err := k.GetTotalCollateral(ctx) // REC 개수
@@ -54,26 +54,26 @@ func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) erro
 	supply := k.GetSupply(ctx)
 	minted, _ := sdk.NewIntFromString(supply.Minted)
 
-	newTotal := minted.Add(stableAmt)
+	newTotal := minted.Add(coinAmt)
 
 	// 담보 가치 = REC 개수 × 1000 stable (1REC = 1,000,000 stable)
 	collateralValueStable := collateralAmt.Mul(sdk.NewInt(1000000))
 
 	if newTotal.GT(collateralValueStable) {
-		return fmt.Errorf("[RewardSolarPower] 발행량 초과: 담보 부족 (collateral=%s REC → %s stable, minted=%s, requested=%s)",
-			collateralAmt.String(), collateralValueStable.String(), minted.String(), stableAmt.String())
+		return fmt.Errorf("[RewardSolarPower] 발행량 초과: 담보 부족 (collateral=%s REC → %s mec, minted=%s, requested=%s)",
+			collateralAmt.String(), collateralValueStable.String(), minted.String(), coinAmt.String())
 	}
 
 	// 4. stable 발행 및 전송
-	coinsTotal := sdk.NewCoins(sdk.NewCoin("stable", stableAmt))
+	coinsTotal := sdk.NewCoins(sdk.NewCoin("mcnl", coinAmt))
 
 	// 수수료 10%
-	feeAmt := stableAmt.ToDec().Mul(sdk.NewDecWithPrec(1, 1)).TruncateInt() // stableAmt * 0.1
-	feeCoins := sdk.NewCoins(sdk.NewCoin("stable", feeAmt))
+	feeAmt := coinAmt.ToDec().Mul(sdk.NewDecWithPrec(1, 1)).TruncateInt() // coinAmt * 0.1
+	feeCoins := sdk.NewCoins(sdk.NewCoin("mcnl", feeAmt))
 
 	// 사용자 금액
-	userAmt := stableAmt.Sub(feeAmt)
-	userCoins := sdk.NewCoins(sdk.NewCoin("stable", userAmt))
+	userAmt := coinAmt.Sub(feeAmt)
+	userCoins := sdk.NewCoins(sdk.NewCoin("mcnl", userAmt))
 
 	toAddr, err := sdk.AccAddressFromBech32(to)
 	if err != nil {

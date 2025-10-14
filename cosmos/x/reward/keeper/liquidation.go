@@ -12,20 +12,20 @@ func (k Keeper) BurnModuleStableCoins(ctx sdk.Context) error {
 	// 1. 모듈 계좌 주소 조회
 	moduleAddr := k.AccountKeeper.GetModuleAddress(types.ModuleName)
 	if moduleAddr == nil {
-		return fmt.Errorf("[BurnModuleStable] module account not found")
+		return fmt.Errorf("[BurnModuleCoin] module account not found")
 	}
 
-	// 2. stable 코인 잔고 조회
-	stableBalance := k.bankKeeper.GetBalance(ctx, moduleAddr, "stable")
+	// 2. mcnl 코인 잔고 조회
+	stableBalance := k.bankKeeper.GetBalance(ctx, moduleAddr, "mcnl")
 	if stableBalance.Amount.IsZero() {
-		ctx.Logger().Info("[BurnModuleStable] 소각할 stable 코인 없음")
+		ctx.Logger().Info("[BurnModuleCoin] 소각할 mcnl 코인 없음")
 		return nil
 	}
 
 	// 3. 소각 실행
 	coins := sdk.NewCoins(stableBalance)
 	if err := k.bankKeeper.BurnCoins(ctx, types.ModuleName, coins); err != nil {
-		return fmt.Errorf("[BurnModuleStable] failed to burn: %w", err)
+		return fmt.Errorf("[BurnModuleCoin] failed to burn: %w", err)
 	}
 	// 🔹 공급량 업데이트
 	supply := k.GetSupply(ctx)
@@ -37,7 +37,7 @@ func (k Keeper) BurnModuleStableCoins(ctx sdk.Context) error {
 	supply.Minted = newTotal.String()
 	k.SetSupply(ctx, supply)
 
-	ctx.Logger().Info("[BurnModuleStable] 소각 및 공급량 갱신 완료",
+	ctx.Logger().Info("[BurnModuleCoin] 소각 및 공급량 갱신 완료",
 		"burned", stableBalance.String(),
 		"newTotal", newTotal.String(),
 	)

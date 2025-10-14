@@ -13,11 +13,11 @@ func (k Keeper) RemoveCollateral(ctx sdk.Context, from string, amount string) er
 	if err != nil {
 		return fmt.Errorf("[Remove] 잘못된 코인 형식: %s", amount)
 	}
-	if coin.Denom != "stable" {
-		return fmt.Errorf("[Remove] 담보 차감은 stable 기준만 가능합니다: %s", coin.Denom)
+	if coin.Denom != "mcnl" {
+		return fmt.Errorf("[Remove] 담보 차감은 mcnl 기준만 가능합니다: %s", coin.Denom)
 	}
 
-	// 1. stable → REC 개수 환산 (1 REC = 1000 stable)
+	// 1. stable → REC 개수 환산 (1 REC = 1,000,000 stable)
 	oneREC := sdk.NewInt(1000) // 정책적으로 정의
 	recToDelete := coin.Amount.Quo(oneREC)
 	if recToDelete.IsZero() {
