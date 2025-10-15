@@ -56,7 +56,7 @@ func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) erro
 
 	newTotal := minted.Add(coinAmt)
 
-	// 담보 가치 = REC 개수 × 1000 stable (1REC = 1,000,000 stable)
+	// 담보 가치 = REC 개수 × 1000000 stable (1REC = 1,000,000 stable)
 	collateralValueStable := collateralAmt.Mul(sdk.NewInt(1000000))
 
 	if newTotal.GT(collateralValueStable) {
