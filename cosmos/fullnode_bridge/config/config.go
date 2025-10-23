@@ -1,9 +1,31 @@
 package config
 
+import (
+	"log"
+	"os"
+	"strings"
+
+	"github.com/joho/godotenv"
+)
+
+func InitConfig() {
+	// .env 파일 로드
+	if err := godotenv.Load("fullnode_bridge/.env"); err != nil {
+		log.Println("⚠️ .env 파일을 찾을 수 없습니다. 기본값을 사용합니다.")
+	}
+
+	kafkaEnv := os.Getenv("KAFKA_BROKERS")
+	if kafkaEnv != "" {
+		KafkaBrokers = strings.Split(kafkaEnv, ",")
+	} else {
+		KafkaBrokers = []string{"localhost:9092"} // 기본값
+	}
+}
+
 var (
 	FullnodeID = "node_A"
 	// Kafka 브로커 IP 및 포트
-	KafkaBrokers = []string{"192.168.0.173:26650"}
+	KafkaBrokers []string
 
 	// Kafka Consumer
 	TopicLightTx             = "light-vote-topic"          // 태양광 발전량 메세지 토픽

@@ -556,6 +556,9 @@ func extractRecID(resp TxResponse) string {
 }
 
 func StartConsumer() {
+
+	config.InitConfig()
+
 	go StartSolarKafkaConsumer()    // 태양광 발전량 토픽
 	go StartVoteMemberConsumer()    // 회원 수 토픽
 	go StartDeviceAddressConsumer() // 디바이스 id, 주소 매핑 토픽
@@ -564,5 +567,5 @@ func StartConsumer() {
 	go StartBurnConsumer()         // 소각 요청 토픽
 	go StartBalanceConsumer()      // 잔고 확인 토픽
 	go StartBlockCreatorConsumer() // 블록 생성
-	go CheckLiquidation()          // REC 가격 조회
+	// go CheckLiquidation()          // REC 가격 조회
 }

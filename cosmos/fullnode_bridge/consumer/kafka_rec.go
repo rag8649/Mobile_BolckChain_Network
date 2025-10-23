@@ -9,7 +9,6 @@ import (
 	"strconv"
 )
 
-// 회원가입 알고리즘
 type CollateralResponse struct {
 	TotalAmount string `json:"total_amount"`
 }
