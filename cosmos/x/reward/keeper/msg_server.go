@@ -74,6 +74,17 @@ func (m msgServer) BurnStableCoin(goCtx context.Context, msg *types.MsgBurnStabl
 	return resp, nil
 }
 
+// DistributeRewardPercent : 모듈 계좌 잔액의 일정 비율을 address에게 지급
+func (m msgServer) DistributeRewardPercent(goCtx context.Context, msg *types.MsgDistributeRewardPercent) (*types.MsgDistributeRewardPercentResponse, error) {
+	ctx := sdk.UnwrapSDKContext(goCtx)
+
+	if err := m.Keeper.DistributeRewardPercent(ctx, msg); err != nil {
+		return nil, err
+	}
+
+	return &types.MsgDistributeRewardPercentResponse{}, nil
+}
+
 func (m msgServer) DepositCollateral(goCtx context.Context, msg *types.MsgDepositCollateral) (*types.MsgDepositCollateralResponse, error) {
 	ctx := sdk.UnwrapSDKContext(goCtx)
 

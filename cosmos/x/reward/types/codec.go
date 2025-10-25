@@ -34,6 +34,7 @@ func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	cdc.RegisterConcrete(&MsgAddEnergy{}, "reward/MsgAddEnergy", nil)
 	cdc.RegisterConcrete(&MsgCreateRECRecord{}, "reward/MsgCreateRECRecord", nil)
 	cdc.RegisterConcrete(&MsgAppendTxHash{}, "reward/MsgAppendTxHash", nil)
+	cdc.RegisterConcrete(&MsgDistributeRewardPercent{}, "reward/MsgDistributeRewardPercent", nil)
 
 	// ✅ REC 구조체 추가 등록
 	cdc.RegisterConcrete(&RECRecord{}, "reward/RECRecord", nil)
@@ -51,6 +52,7 @@ func RegisterCodec(cdc *codec.LegacyAmino) {
 	cdc.RegisterConcrete(&MsgAddEnergy{}, "reward/MsgAddEnergy", nil)
 	cdc.RegisterConcrete(&MsgCreateRECRecord{}, "reward/MsgCreateRECRecord", nil)
 	cdc.RegisterConcrete(&MsgAppendTxHash{}, "reward/MsgAppendTxHash", nil)
+	cdc.RegisterConcrete(&MsgDistributeRewardPercent{}, "reward/MsgDistributeRewardPercent", nil)
 	// ✅ REC 구조체 추가 등록
 	cdc.RegisterConcrete(&RECRecord{}, "reward/RECRecord", nil)
 	cdc.RegisterConcrete(&RECMeta{}, "reward/RECMeta", nil)
@@ -69,5 +71,6 @@ func RegisterInterfaces(reg cdctypes.InterfaceRegistry) {
 		&MsgAddEnergy{},
 		&MsgCreateRECRecord{},
 		&MsgAppendTxHash{},
+		&MsgDistributeRewardPercent{},
 	)
 }

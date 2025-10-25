@@ -123,9 +123,7 @@ func (h *lightTxHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 				}
 			}
 
-			// 위도/경도가 모두 0이 아니어야 전송
 			if location.Latitude != 0 && location.Longitude != 0 {
-				// sendLocationToKafka(txMsg.Hash, location, config.FullnodeID)
 				SentLatLng[txMsg.Hash] = true
 			} else {
 				fmt.Println("⚠️ 위도/경도 정보 없음 또는 0, Kafka 전송 생략:", txMsg.Hash)
@@ -189,7 +187,7 @@ func PubKeyToAddress(pubKeyBytes []byte) (string, error) { // 주소 변환 함�
 
 func startVoteTimer(producer sarama.SyncProducer, hash string) {
 	// 투표 수집 대기
-	time.Sleep(5 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	// 필요한 데이터만 뽑고 Lock 해제
 	VoteMutex.Lock()
@@ -222,11 +220,11 @@ func startVoteTimer(producer sarama.SyncProducer, hash string) {
 	// ⚡ Lock 해제 후 처리 시작
 	// -------------------------
 
-	if len(uniqueList) == 0 {
+	if len(uniqueList) > VoteMemberCount/2 {
 		return
 	}
 
-	fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
+	// fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
 	fmt.Printf("[Kafka: Solar data] → 서명자 주소: %v\n", uniqueList)
 
 	// 검증자 보상
@@ -524,14 +522,22 @@ func handleBlockCreatorMessage(msg []byte) {
 	// === AppendTxHash 트랜잭션 실행 ===
 	output, err = tx.AppendTxHashCLI(data.Creator, recID)
 	if err != nil {
-		fmt.Println("[Kafka: AppendTxHash] 실패:", err)
+		fmt.Println("Block 생성 실패:", err)
 		fmt.Println("출력:", output)
 	} else {
-		fmt.Println("[Kafka: AppendTxHash] 성공:", output)
+		fmt.Println("Block 생성 성공:", output)
 	}
 
 	// 발급 후 RECCount 리셋
 	RECCount = 0
+
+	output, err = tx.DistributeRewardPercentCLI(data.Creator, 10)
+	if err != nil {
+		fmt.Println("블록 생성 보상 실패:", err)
+		fmt.Println("출력:", output)
+	} else {
+		fmt.Println("블록 생성 보상 성공:", output)
+	}
 }
 
 // 🔹 rec_id 추출 로직 (logs 기준 → base64 디코딩 불필요)

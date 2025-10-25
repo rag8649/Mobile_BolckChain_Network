@@ -23,7 +23,7 @@ func StartVoteMemberConsumer() {
 		if err != nil {
 			fmt.Printf("[Kafka: Users] 초기 요청 전송 실패: %v\n", err)
 		} else {
-			fmt.Println("[Kafka: Users] 초기 VoteMemberCount 요청 전송 완료")
+			fmt.Println("[Kafka: Users] 초기 VoteMemberCount 요청")
 		}
 	}()
 

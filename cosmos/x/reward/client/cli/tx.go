@@ -323,6 +323,42 @@ func CmdAppendTxHash() *cobra.Command {
 	return cmd
 }
 
+func CmdDistributeRewardPercent() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "distribute-reward-percent [address] [percent]",
+		Short: "Distribute a percentage of the reward module's balance to an address",
+		Long: `Distribute a percentage of the reward module account balance 
+to a specified address without minting new coins.
+The [percent] argument should be a decimal value between 0 and 1.
+Example: distribute-reward-percent cosmos1abcd... 0.25`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			address := args[0]
+			percent := args[1]
+
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			msg := types.NewMsgDistributeRewardPercent(
+				clientCtx.GetFromAddress().String(), // 보낸 사람(creator)
+				address,                             // 받는 사람
+				percent,                             // 비율
+			)
+
+			if err := msg.ValidateBasic(); err != nil {
+				return err
+			}
+
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+	return cmd
+}
+
 func NewTxCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:                        types.ModuleName,
@@ -341,5 +377,6 @@ func NewTxCmd() *cobra.Command {
 	cmd.AddCommand(CmdAddEnergy())
 	cmd.AddCommand(CmdCreateRECRecord())
 	cmd.AddCommand(CmdAppendTxHash())
+	cmd.AddCommand(CmdDistributeRewardPercent())
 	return cmd
 }

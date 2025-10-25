@@ -17,6 +17,7 @@ func InitConfig() {
 	kafkaEnv := os.Getenv("KAFKA_BROKERS")
 	if kafkaEnv != "" {
 		KafkaBrokers = strings.Split(kafkaEnv, ",")
+		log.Println(KafkaBrokers)
 	} else {
 		KafkaBrokers = []string{"localhost:9092"} // 기본값
 	}

@@ -264,11 +264,9 @@ func runTx(args []string) (stdout, stderr []byte, err error) {
 	return outBuf.Bytes(), errBuf.Bytes(), err
 }
 
-func SendRewardTx(toAddr string, power float64, creator bool) (string, error) {
-	if power <= 0 {
-		return "", fmt.Errorf("[Kafka: reward] 보상할 발전량이 없습니다")
-	}
-	amount := strconv.FormatInt(int64(math.Round(power)), 10)
+func SendRewardTx(toAddr string, reward float64) (string, error) {
+
+	amount := strconv.FormatInt(int64(math.Round(reward)), 10)
 
 	base := []string{
 		"tx", "reward", "reward-solar-power", toAddr, amount,
@@ -276,9 +274,9 @@ func SendRewardTx(toAddr string, power float64, creator bool) (string, error) {
 		"--chain-id", "learning-chain-1",
 		"--home", "private/.simapp",
 		"--keyring-backend", "test",
-		"--broadcast-mode", "sync", // 느려져도 안정 원하면 "block"
+		"--broadcast-mode", "sync",
 		"--output", "json",
-		"--node", "tcp://localhost:26657", // 조회/브로드캐스트 동일 노드 고정!
+		"--node", "tcp://localhost:26657",
 		"--gas", "auto", "--gas-adjustment", "1.2",
 		"--fees", "100stake",
 		"--yes",
@@ -287,13 +285,9 @@ func SendRewardTx(toAddr string, power float64, creator bool) (string, error) {
 	var stdout, stderr []byte
 	var err error
 
-	// 최대 3회 시도: 1차(기본) + 미스매치 시 expected로 재시도(최대 2회)
 	for attempt := 1; attempt <= 3; attempt++ {
 		stdout, stderr, err = runTx(base)
 		fmt.Printf("[Kafka: reward][try #%d] stdout: %s\n", attempt, stdout)
-		// if len(stderr) > 0 {
-		// 	fmt.Printf("[Kafka: reward][try #%d] stderr: %s\n", attempt, stderr)
-		// }
 
 		if err == nil {
 			break
@@ -452,6 +446,25 @@ func AppendTxHashCLI(nodeCreator string, recID string) (string, error) {
 		"--yes",
 		"--broadcast-mode", "sync",
 		"-o", "json",
+	)
+
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func DistributeRewardPercentCLI(address string, percent float64) (string, error) {
+	cmd := exec.Command(
+		"./build/simd", "tx", "reward", "distribute-reward-percent",
+		address, strconv.FormatFloat(percent, 'f', -1, 64),
+		"--from", "alice",
+		"--chain-id", "learning-chain-1",
+		"--keyring-backend", "test",
+		"--home", "private/.simapp",
+		"--gas", "auto",
+		"--gas-adjustment", "1.2",
+		"--yes",
+		"--broadcast-mode", "block",
+		"-o", "json", // JSON 출력
 	)
 
 	out, err := cmd.CombinedOutput()

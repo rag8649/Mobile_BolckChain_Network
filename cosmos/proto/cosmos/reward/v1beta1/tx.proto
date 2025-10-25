@@ -58,12 +58,24 @@ service Msg {
     option (google.api.http).post = "/cosmos/reward/v1beta1/append_tx_hash";
     option (google.api.http).body = "*";
   }
+
+  // ✅ 새 Msg: 모듈 계좌 잔액의 일정 퍼센티지를 지급
+  rpc DistributeRewardPercent(MsgDistributeRewardPercent) returns (MsgDistributeRewardPercentResponse) {
+    option (google.api.http).post = "/cosmos/reward/v1beta1/distribute_reward_percent";
+    option (google.api.http).body = "*";
+  }
 }
 
 // =====================
 // Tx 메시지들
 // =====================
 
+// ✅ 모듈 계좌의 잔액에서 일정 비율로 지급
+message MsgDistributeRewardPercent {
+  string creator = 1; // 트랜잭션 보낸 사람 (보통 admin 혹은 keeper)
+  string address = 2; // 보상받을 계좌 주소
+  string percent = 3; // 지급 비율 (예: "0.1" → 10%, "0.25" → 25%)
+}
 // 보상 (발행)
 message MsgRewardSolarPower {
   string creator = 1;
@@ -106,6 +118,7 @@ message MsgAddEnergy {
   string amount  = 3; // Wh 단위
   string tx_hash = 4; // 원본 Tx 해시
 }
+
 message MsgAddEnergyResponse {
   int64 recs = 1;
 }
@@ -179,6 +192,11 @@ message TxNodeTx {
 // =====================
 // 응답 메시지들
 // =====================
+
+
+message MsgDistributeRewardPercentResponse {
+  string rewarded_amount = 1; // 지급된 실제 금액
+}
 message MsgRemoveCollateralResponse {}
 message MsgRewardSolarPowerResponse {}
 message MsgBurnStableCoinResponse {
