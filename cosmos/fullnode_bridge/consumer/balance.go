@@ -79,5 +79,5 @@ func StartBalanceConsumer() {
 		}
 	}()
 
-	fmt.Println("[Kafka: Balance] Kafka Consumer Group 수신 대기 중...")
+	fmt.Println("[Kafka: Balance] on")
 }

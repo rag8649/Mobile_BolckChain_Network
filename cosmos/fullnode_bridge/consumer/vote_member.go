@@ -21,9 +21,9 @@ func StartVoteMemberConsumer() {
 	go func() {
 		err := sendInitialRequest(brokers, config.TopicRequestMemberCount)
 		if err != nil {
-			fmt.Printf("[Kafka: Users] 초기 요청 전송 실패: %v\n", err)
+			fmt.Printf("[Kafka: Users] 최초 요청 전송 실패: %v\n", err)
 		} else {
-			fmt.Println("[Kafka: Users] 초기 VoteMemberCount 요청")
+			fmt.Println("[Kafka: Users] 최초 요청")
 		}
 	}()
 
@@ -39,7 +39,7 @@ func StartVoteMemberConsumer() {
 	}
 
 	go func() {
-		fmt.Println("[Kafka: Users] Kafka Partition Consumer 수신 대기 중...")
+		fmt.Println("[Kafka: Users] on")
 		for msg := range partitionConsumer.Messages() {
 			fmt.Printf("[Kafka: Users] 수신 메시지: %s\n", string(msg.Value))
 

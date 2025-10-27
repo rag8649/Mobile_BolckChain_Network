@@ -32,20 +32,20 @@ var txBroadcastMutex sync.Mutex
 func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientConn, msg types.LightTxMessage, addr string, power float64) (string, error) {
 	// --- clientCtx 필수 요소 가드 ---
 	if clientCtx.TxConfig == nil {
-		return "", fmt.Errorf("clientCtx.TxConfig is nil")
+		return "", fmt.Errorf("[BLT] clientCtx.TxConfig is nil")
 	}
 	if clientCtx.Keyring == nil {
-		return "", fmt.Errorf("clientCtx.Keyring is nil")
+		return "", fmt.Errorf("[BLT] clientCtx.Keyring is nil")
 	}
 	if clientCtx.AccountRetriever == nil {
 		clientCtx = clientCtx.WithAccountRetriever(authtypes.AccountRetriever{})
 	}
 	if clientCtx.FromName == "" || clientCtx.FromAddress.Empty() {
-		return "", fmt.Errorf("clientCtx.FromName/FromAddress not set")
+		return "", fmt.Errorf("[BLT] clientCtx.FromName/FromAddress not set")
 	}
 
 	if power <= 0 {
-		return "", fmt.Errorf("보상할 발전량이 없습니다")
+		return "", fmt.Errorf("[BLT] 보상할 발전량이 없습니다")
 	}
 
 	signer := clientCtx.GetFromAddress().String() // ← alice 주소
@@ -101,12 +101,12 @@ func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientC
 			Pubkey:    msg.Pubkey,
 		}
 	} else {
-		return "", fmt.Errorf("no valid LightTx data")
+		return "", fmt.Errorf("[BLT] no valid LightTx data")
 	}
 
 	// 2) Reward 메시지(수령자는 addr, 서명자는 alice)
 	if power <= 0 {
-		return "", fmt.Errorf("보상할 발전량이 없습니다")
+		return "", fmt.Errorf("[BLT] 보상할 발전량이 없습니다")
 	}
 	rewardMsg := &rewardtypes.MsgRewardSolarPower{
 		Creator: signer,
@@ -117,7 +117,7 @@ func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientC
 	// 3) TxBuilder에 Msg 두 개 추가
 	txBuilder := clientCtx.TxConfig.NewTxBuilder()
 	if err := txBuilder.SetMsgs(lightMsg, rewardMsg); err != nil {
-		return "", fmt.Errorf("failed to set msgs: %w", err)
+		return "", fmt.Errorf("[BLT] failed to set msgs: %w", err)
 	}
 
 	// 4) Factory (0.45: PrepareFactory / CalculateFees 없음)
@@ -136,19 +136,14 @@ func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientC
 	// 4-1) 계정번호/시퀀스 조회 후 팩토리에 주입
 	accNum, seq, err := clientCtx.AccountRetriever.GetAccountNumberSequence(clientCtx, fromAddr)
 	if err != nil {
-		return "", fmt.Errorf("failed to get account/sequence: %w", err)
+		return "", fmt.Errorf("[BLT] failed to get account/sequence: %w", err)
 	}
 	txf = txf.WithAccountNumber(accNum).WithSequence(seq)
 
 	// 5) 가스 시뮬레이션 → 여유 가스 산정
 	_, gasWanted, err := tx.CalculateGas(clientCtx, txf, lightMsg, rewardMsg)
 	if err != nil {
-		if strings.Contains(err.Error(), "[BroadcastLightTxWithReward] account sequence mismatch") {
-			fmt.Println("[BroadcastLightTxWithReward] sequence mismatch → 재시도")
-			time.Sleep(1 * time.Second)
-			return BroadcastLightTxWithReward(clientCtx, grpcConn, msg, addr, power)
-		}
-		return "", fmt.Errorf("failed to simulate gas: %w", err)
+		return "", fmt.Errorf("[BLT] failed to simulate gas: %w", err)
 	}
 
 	adjustedGas := uint64(float64(gasWanted)*1.3) + 10000 // 여유치
@@ -157,7 +152,7 @@ func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientC
 	// 6) 수수료 수동 계산 (DecCoins → Coins)
 	gasPrices, err := sdk.ParseDecCoins("0.025stake")
 	if err != nil {
-		return "", fmt.Errorf("invalid gas prices: %w", err)
+		return "", fmt.Errorf("[BLT] invalid gas prices: %w", err)
 	}
 	decGas := sdk.NewDec(int64(adjustedGas))
 	decFees := gasPrices.MulDec(decGas)  // DecCoins * Dec
@@ -169,24 +164,24 @@ func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientC
 
 	// 7) 서명
 	if err := tx.Sign(txf, fromName, txBuilder, true); err != nil {
-		return "", fmt.Errorf("failed to sign tx: %w", err)
+		return "", fmt.Errorf("[BLT] failed to sign tx: %w", err)
 	}
 
 	// 8) 브로드캐스트
 	txBytes, err := clientCtx.TxConfig.TxEncoder()(txBuilder.GetTx())
 	if err != nil {
-		return "", fmt.Errorf("failed to encode tx: %w", err)
+		return "", fmt.Errorf("[BLT] failed to encode tx: %w", err)
 	}
 	res, err := clientCtx.BroadcastTxCommit(txBytes)
 	if err != nil {
-		return "", fmt.Errorf("broadcast failed: %w", err)
+		return "", fmt.Errorf("[BLT] broadcast failed: %w", err)
 	}
 	// code 체크 (0이 아니면 실패)
 	if res.Code != 0 {
-		return res.TxHash, fmt.Errorf("deliverTx failed: code=%d codespace=%s raw_log=%s", res.Code, res.Codespace, res.RawLog)
+		return res.TxHash, fmt.Errorf("[BLT] deliverTx failed: code=%d codespace=%s raw_log=%s", res.Code, res.Codespace, res.RawLog)
 	}
 
-	fmt.Println("BroadcastLightTxWithReward 트랜잭션 전송 성공")
+	fmt.Println("[BLT] 트랜잭션 전송 성공")
 	return res.TxHash, nil
 }
 
@@ -213,7 +208,7 @@ func QueryBalance(address string) (string, error) {
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("잔고 조회 실패: %v\n출력: %s", err, string(out))
+		return "", fmt.Errorf("[QueryBalance] 잔고 조회 실패: %v\n출력: %s", err, string(out))
 	}
 
 	var resp struct {
@@ -223,11 +218,11 @@ func QueryBalance(address string) (string, error) {
 		} `json:"balances"`
 	}
 	if err := json.Unmarshal(out, &resp); err != nil {
-		return "", fmt.Errorf("잔고 JSON 파싱 실패: %v\n출력: %s", err, string(out))
+		return "", fmt.Errorf("[QueryBalance] 잔고 JSON 파싱 실패: %v\n출력: %s", err, string(out))
 	}
 
 	if len(resp.Balances) == 0 {
-		return "", fmt.Errorf("잔고 없음")
+		return "", fmt.Errorf("[QueryBalance] 잔고 없음")
 	}
 
 	denom := resp.Balances[0].Denom

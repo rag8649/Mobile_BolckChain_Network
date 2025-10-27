@@ -51,26 +51,6 @@ var (
 	VoteMemberCount int // 데이터베이스 멤버 수 기록 변수
 )
 
-var SentLatLng = make(map[string]bool) // 중복 전송 방지용
-var RewardWeight = make(map[string]float64)
-
-type Location struct { // 오라클에 전달하는 위치 값
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
-}
-
-type LocationOutputMessage struct { // 오라클로부터 받는 결과값
-	Hash     string  `json:"hash"`
-	Output   float64 `json:"output"`
-	SenderID string  `json:"sender_id"`
-}
-
-// 오라클로부터 받는 참가자 보상 결과값
-type MemberRewardOutputMessage struct {
-	SenderID string             `json:"sender_id"` // 메시지 송신자 ID
-	Rewards  map[string]float64 `json:"rewards"`   // 참가자 주소 → 보상 금액
-}
-
 type VoteMemberMsg struct {
 	Count int `json:"count"`
 }
@@ -114,21 +94,6 @@ func (h *lightTxHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 			continue
 		}
 
-		if !SentLatLng[txMsg.Hash] {
-			var location Location
-			if txMsg.Original != nil {
-				location = Location{
-					Latitude:  txMsg.Original.Location.Latitude,
-					Longitude: txMsg.Original.Location.Longitude,
-				}
-			}
-
-			if location.Latitude != 0 && location.Longitude != 0 {
-				SentLatLng[txMsg.Hash] = true
-			} else {
-				// fmt.Println("⚠️ 위도/경도 정보 없음 또는 0, Kafka 전송 생략:", txMsg.Hash)
-			}
-		}
 		VoteMutex.Lock()
 		VoteMap[txMsg.Hash] = append(VoteMap[txMsg.Hash], SignatureEntry{
 			TxMsg:     txMsg,
@@ -212,28 +177,26 @@ func startVoteTimer(producer sarama.SyncProducer, hash string) {
 
 	// cleanup
 	delete(VoteMap, hash)
-	delete(SentLatLng, hash)
-	delete(RewardWeight, hash)
 	VoteMutex.Unlock()
 
 	// -------------------------
 	// ⚡ Lock 해제 후 처리 시작
 	// -------------------------
 	// fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
-	fmt.Printf("[Kafka: Solar data] → 서명자 주소: %v\n", uniqueList)
-	
-	if len(uniqueList) < VoteMemberCount/2 {
-		fmt.Printf("[Kafka: Solar data] 투표자 수 미달\n")
+	fmt.Printf("[startVoteTimer] 서명자 리스트: %v\n", uniqueList)
+
+	needed := VoteMemberCount/2 + 1
+	if len(uniqueList) < needed {
+		fmt.Println("[startVoteTimer] 투표자 수 미달")
 		return
 	}
-
 	// 검증자 보상
 	SendValidatorMembers(uniqueList)
 
 	// userAddress 찾기
 	addr, ok := deviceAddressMap.Load(DeviceID[txMsg.Hash])
 	if !ok {
-		fmt.Printf("[Kafka: Solar data] 주소 비어있음 (hash=%s)\n", txMsg.Hash)
+		fmt.Printf("[startVoteTimer] 주소 비어있음 (hash=%s)\n", txMsg.Hash)
 		return
 	}
 	userAddress := addr.(string)
@@ -248,18 +211,17 @@ func startVoteTimer(producer sarama.SyncProducer, hash string) {
 
 	txHash, err := tx.BroadcastLightTxWithReward(clientCtx, GRPCConn, txMsg, userAddress, power)
 	if err != nil {
-		fmt.Println("[Kafka: Solar data] 트랜잭션 전송 실패:", err)
+		fmt.Println("[startVoteTimer] 트랜잭션 전송 실패:", err)
 	} else {
 		whAmt := sdk.NewInt(int64(math.Round(power)))
 
 		// AddEnergy 실행
 		recs, contributors, output, err := tx.AddEnergyCLI(userAddress, whAmt, txHash)
 		if err != nil {
-			fmt.Println("[Kafka: AddEnergy] 실행 실패:", err)
+			fmt.Println("[startVoteTimer] AddEnergyCLI 실행 실패:", err)
 			fmt.Println("출력:", output)
 			return
 		}
-		// fmt.Println("[Kafka: AddEnergy] 실행 결과:", output)
 
 		// REC 발급 조건 확인
 		if recs > 0 {
@@ -278,9 +240,9 @@ func startVoteTimer(producer sarama.SyncProducer, hash string) {
 			}
 			_, _, err = producer.SendMessage(kafkaMsg)
 			if err != nil {
-				fmt.Println("[Kafka: Solar data] 기여자 리스트 전송 실패:", err)
+				fmt.Println("[startVoteTimer] 기여자 리스트 전송 실패:", err)
 			} else {
-				fmt.Println("[Kafka: Solar data] 기여자 리스트 전송 성공 (RECCount:", RECCount, ")")
+				fmt.Println("[startVoteTimer] 기여자 리스트 전송 성공 (RECCount:", RECCount, ")")
 			}
 		}
 	}
@@ -324,7 +286,7 @@ func StartDeviceAddressConsumer() {
 		panic(fmt.Sprintf("[Kafka: DeviceAddress] 파티션 구독 실패: %v", err))
 	}
 
-	fmt.Println("[Kafka: DeviceAddress] Consumer 수신 대기 중...")
+	fmt.Println("[Kafka: DeviceAddress] on")
 
 	go func() {
 		for msg := range partitionConsumer.Messages() {
@@ -350,10 +312,10 @@ func StartDeviceAddressConsumer() {
 
 			// 중복 확인
 			if val, ok := deviceAddressMap.Load(response.DeviceID); ok {
-				fmt.Printf("[Kafka: DeviceAddress] 기존 값 덮어씀: %s → %s (기존=%s)\n",
+				fmt.Printf("[Kafka: DeviceAddress]: %s → %s (기존=%s)\n",
 					response.DeviceID, response.Address, val.(string))
 			} else {
-				fmt.Printf("[Kafka: DeviceAddress] 저장됨: %s → %s\n", response.DeviceID, response.Address)
+				fmt.Printf("[Kafka: DeviceAddress] 새 주소 저장됨: %s → %s\n", response.DeviceID, response.Address)
 			}
 
 			deviceAddressMap.Store(response.DeviceID, response.Address)
@@ -372,7 +334,7 @@ func SendValidatorMembers(uniqueList []string) error {
 	// JSON 직렬화
 	msgBytes, err := json.Marshal(vMemberMsg)
 	if err != nil {
-		return fmt.Errorf("VMember 메시지 직렬화 실패: %w", err)
+		return fmt.Errorf("[Kafka: Validators] 검증자 메시지 직렬화 실패: %w", err)
 	}
 
 	// Kafka 메시지 생성
@@ -384,10 +346,10 @@ func SendValidatorMembers(uniqueList []string) error {
 	// 전송
 	_, _, err = producer.KafkaProducerVMember.SendMessage(kafkaMsg)
 	if err != nil {
-		return fmt.Errorf("VMember 메시지 전송 실패: %w", err)
+		return fmt.Errorf("[Kafka: Validators] 검증자 메시지 전송 실패: %w", err)
 	}
 
-	fmt.Printf("[Kafka: Solar data] VMember 메시지 전송 성공: %+v\n", vMemberMsg)
+	fmt.Printf("[Kafka: Validators] 검증자 목록 전송 성공: %+v\n", vMemberMsg)
 	return nil
 }
 
@@ -417,7 +379,7 @@ func StartSolarKafkaConsumer() {
 	}()
 
 	clientCtx, GRPCConn, _ = NewClientCtx045()
-	fmt.Println("[Kafka: Solar data] Kafka Consumer Group 수신 대기 중...")
+	fmt.Println("[Kafka: Solar data] on")
 }
 
 // 🔹 Cosmos SDK tx 결과 구조체
@@ -453,7 +415,7 @@ func StartBlockCreatorConsumer() {
 		panic(fmt.Sprintf("[Kafka: BlockCreator] 파티션 구독 실패: %v", err))
 	}
 
-	fmt.Println("[Kafka: BlockCreator] Consumer 수신 대기 중...")
+	fmt.Println("[Kafka: BlockCreator] on")
 
 	go func() {
 		for msg := range partitionConsumer.Messages() {
@@ -465,39 +427,37 @@ func StartBlockCreatorConsumer() {
 func handleBlockCreatorMessage(msg []byte) {
 	var data BlockCreatorMsg
 	if err := json.Unmarshal(msg, &data); err != nil {
-		fmt.Printf("[Kafka: BlockCreator] JSON 파싱 실패: %v\n", err)
+		fmt.Printf("[BlockCreator] JSON 파싱 실패: %v\n", err)
 		return
 	}
 
 	// 🔹 Fullnode 검증
 	if data.FullnodeID != config.FullnodeID {
-		fmt.Printf("[Kafka: BlockCreator] Fullnode ID 불일치 → 무시 (got=%s, expected=%s)\n",
+		fmt.Printf("[BlockCreator] Fullnode ID 불일치 → 무시 (got=%s, expected=%s)\n",
 			data.FullnodeID, config.FullnodeID)
 		return
 	}
 
-	fmt.Printf("[Kafka: BlockCreator] 블록 생성자: %s\n", data.Creator)
+	fmt.Printf("[BlockCreator] 블록 생성자: %s\n", data.Creator)
 
 	// === 최종 REC 발급 ===
 	if RECCount <= 0 {
-		fmt.Println("[Kafka: BlockCreator] 발급할 REC 없음 (RECCount=0)")
+		fmt.Println("[BlockCreator] 발급할 REC 없음 (RECCount=0)")
 		return
 	}
 
-	fmt.Printf("[Kafka: BlockCreator] REC 발급 시작 (count=%d)\n", RECCount)
+	fmt.Printf("[BlockCreator] REC 발급 시작 (count=%d)\n", RECCount)
 	output, err := tx.CreateRECRecordCLI(RECCount)
 	if err != nil {
-		fmt.Println("[Kafka: REC 발급] 실패:", err)
+		fmt.Println("[BlockCreator] CreateRECRecordCLI 실패:", err)
 		RECCount = 0
 		return
 	}
 
-	fmt.Println("[Kafka: REC 발급] 성공:")
-
 	// 🔹 JSON 부분만 추출
 	idx := strings.Index(output, "{")
 	if idx == -1 {
-		fmt.Println("[Kafka: REC 발급] 출력에서 JSON 시작점을 찾을 수 없음")
+		fmt.Println("[BlockCreator] 출력에서 JSON 시작점을 찾을 수 없음")
 		RECCount = 0
 		return
 	}
@@ -506,7 +466,7 @@ func handleBlockCreatorMessage(msg []byte) {
 	// 🔹 TxResponse 파싱
 	var resp TxResponse
 	if err := json.Unmarshal([]byte(jsonPart), &resp); err != nil {
-		fmt.Println("[Kafka: REC 발급] JSON 파싱 실패:", err)
+		fmt.Println("[BlockCreator] JSON 파싱 실패:", err)
 		RECCount = 0
 		return
 	}
@@ -514,7 +474,7 @@ func handleBlockCreatorMessage(msg []byte) {
 	// 🔹 rec_id 추출 (logs에서 그대로 사용)
 	recID := extractRecID(resp)
 	if recID == "" {
-		fmt.Println("[Kafka: REC 발급] rec_id를 찾을 수 없음")
+		fmt.Println("[BlockCreator] rec_id를 찾을 수 없음")
 		RECCount = 0
 		return
 	}
@@ -522,10 +482,10 @@ func handleBlockCreatorMessage(msg []byte) {
 	// === AppendTxHash 트랜잭션 실행 ===
 	output, err = tx.AppendTxHashCLI(data.Creator, recID)
 	if err != nil {
-		fmt.Println("Block 생성 실패:", err)
-		fmt.Println("출력:", output)
+		fmt.Println("[BlockCreator] Block 생성 실패:", err)
+		fmt.Println("[BlockCreator] 출력:", output)
 	} else {
-		fmt.Println("Block 생성 성공:", output)
+		fmt.Println("[BlockCreator] Block 생성:", output)
 	}
 
 	// 발급 후 RECCount 리셋
@@ -533,10 +493,10 @@ func handleBlockCreatorMessage(msg []byte) {
 
 	output, err = tx.DistributeRewardPercentCLI(data.Creator, 10)
 	if err != nil {
-		fmt.Println("블록 생성 보상 실패:", err)
-		fmt.Println("출력:", output)
+		fmt.Println("[BlockCreator] 블록 생성 보상 실패:", err)
+		fmt.Println("[BlockCreator] 출력:", output)
 	} else {
-		fmt.Println("블록 생성 보상 성공:", output)
+		fmt.Println("[BlockCreator] 블록 생성 보상 지급:", output)
 	}
 }
 

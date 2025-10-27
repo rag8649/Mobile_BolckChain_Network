@@ -46,7 +46,7 @@ func BurnStableCoin(targetAddr, amount string) (*BurnResultMessage, error) {
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("simd error: %v\noutput: %s", err, string(out))
+		return nil, fmt.Errorf("[Kafka: Burn] simd error: %v\noutput: %s", err, string(out))
 	}
 
 	fmt.Printf("[Kafka: Burn] 전체 결과: %s\n", string(out))
@@ -55,20 +55,20 @@ func BurnStableCoin(targetAddr, amount string) (*BurnResultMessage, error) {
 	raw := string(out)
 	start := strings.Index(raw, "{")
 	if start == -1 {
-		return nil, fmt.Errorf("no JSON found in output: %s", raw)
+		return nil, fmt.Errorf("[Kafka: Burn] no JSON found in output: %s", raw)
 	}
 	jsonPart := raw[start:]
 
 	// === TxResponse 파싱 ===
 	var txResp TxResponse
 	if err := json.Unmarshal([]byte(jsonPart), &txResp); err != nil {
-		return nil, fmt.Errorf("failed to parse tx response: %v\njson: %s", err, jsonPart)
+		return nil, fmt.Errorf("[Kafka: Burn] failed to parse tx response: %v\njson: %s", err, jsonPart)
 	}
 
 	// === raw_log 파싱 (이벤트 안의 REC 데이터 추출) ===
 	var parsedLogs []map[string]interface{}
 	if err := json.Unmarshal([]byte(txResp.RawLog), &parsedLogs); err != nil {
-		return nil, fmt.Errorf("failed to parse raw_log: %v\nraw_log: %s", err, txResp.RawLog)
+		return nil, fmt.Errorf("[Kafka: Burn] failed to parse raw_log: %v\nraw_log: %s", err, txResp.RawLog)
 	}
 
 	var recs []*rtypes.RECRecord

@@ -92,7 +92,7 @@ func StartCollateralConsumer() {
 		}
 	}()
 
-	fmt.Println("[Kafka: Collateral] Kafka Consumer Group 수신 대기 중...")
+	fmt.Println("[Kafka: Collateral] on")
 }
 
 // BroadcastDepositCollateral : deposit-collateral 메시지를 브로드캐스트
