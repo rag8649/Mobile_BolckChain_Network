@@ -126,7 +126,7 @@ func (h *lightTxHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 			if location.Latitude != 0 && location.Longitude != 0 {
 				SentLatLng[txMsg.Hash] = true
 			} else {
-				fmt.Println("⚠️ 위도/경도 정보 없음 또는 0, Kafka 전송 생략:", txMsg.Hash)
+				// fmt.Println("⚠️ 위도/경도 정보 없음 또는 0, Kafka 전송 생략:", txMsg.Hash)
 			}
 		}
 		VoteMutex.Lock()
@@ -220,7 +220,8 @@ func startVoteTimer(producer sarama.SyncProducer, hash string) {
 	// ⚡ Lock 해제 후 처리 시작
 	// -------------------------
 
-	if len(uniqueList) > VoteMemberCount/2 {
+	if len(uniqueList) < VoteMemberCount/2 {
+		fmt.Printf("[Kafka: Solar data] 투표자 수 미달\n")
 		return
 	}
 
