@@ -25,10 +25,6 @@ func NewKeeper(cdc codec.BinaryCodec, key sdk.StoreKey, bankKeeper types.BankKee
 }
 
 func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) error {
-	ctx.Logger().Info("[RewardSolarPower] 함수 호출 시작",
-		"to", to,
-		"amount_raw", amount,
-	)
 
 	if k.bankKeeper == nil {
 		panic("bankKeeper is nil")
@@ -39,7 +35,6 @@ func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) erro
 	if !ok {
 		return fmt.Errorf("잘못된 amount 형식: %s", amount)
 	}
-	ctx.Logger().Info("[RewardSolarPower] amount 변환 성공 (Wh)", "whAmt", whAmt.String())
 
 	// 2. Wh → stable 변환 (1 stable = 1Wh)
 	stableUnit := sdk.NewInt(1)
@@ -96,6 +91,5 @@ func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) erro
 	supply.Minted = newTotal.String()
 	k.SetSupply(ctx, supply)
 
-	ctx.Logger().Info("[RewardSolarPower] 함수 종료")
 	return nil
 }

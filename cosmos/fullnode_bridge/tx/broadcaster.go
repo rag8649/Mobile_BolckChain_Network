@@ -138,8 +138,8 @@ func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientC
 	// 5) 가스 시뮬레이션 → 여유 가스 산정
 _, gasWanted, err := tx.CalculateGas(clientCtx, txf, lightMsg, rewardMsg)
 if err != nil {
-	if strings.Contains(err.Error(), "account sequence mismatch") {
-		fmt.Println("[Broadcast] sequence mismatch → 재시도")
+	if strings.Contains(err.Error(), "[BroadcastLightTxWithReward] account sequence mismatch") {
+		fmt.Println("[BroadcastLightTxWithReward] sequence mismatch → 재시도")
 		time.Sleep(1 * time.Second)
 		return BroadcastLightTxWithReward(clientCtx, grpcConn, msg, addr, power)
 	}
@@ -185,7 +185,7 @@ if err != nil {
 		return res.TxHash, fmt.Errorf("deliverTx failed: code=%d codespace=%s raw_log=%s", res.Code, res.Codespace, res.RawLog)
 	}
 
-	fmt.Println("[Kafka: SolarData] 트랜잭션 전송 성공")
+	fmt.Println("BroadcastLightTxWithReward 트랜잭션 전송 성공")
 	return res.TxHash, nil
 }
 

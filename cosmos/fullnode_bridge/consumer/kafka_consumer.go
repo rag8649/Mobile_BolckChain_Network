@@ -219,14 +219,13 @@ func startVoteTimer(producer sarama.SyncProducer, hash string) {
 	// -------------------------
 	// ⚡ Lock 해제 후 처리 시작
 	// -------------------------
-
+	// fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
+	fmt.Printf("[Kafka: Solar data] → 서명자 주소: %v\n", uniqueList)
+	
 	if len(uniqueList) < VoteMemberCount/2 {
 		fmt.Printf("[Kafka: Solar data] 투표자 수 미달\n")
 		return
 	}
-
-	// fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
-	fmt.Printf("[Kafka: Solar data] → 서명자 주소: %v\n", uniqueList)
 
 	// 검증자 보상
 	SendValidatorMembers(uniqueList)
