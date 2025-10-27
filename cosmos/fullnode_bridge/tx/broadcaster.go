@@ -16,17 +16,18 @@ import (
 	"github.com/cosmos/cosmos-sdk/fullnode_bridge/producer"
 	"github.com/cosmos/cosmos-sdk/fullnode_bridge/types"
 
+	"sync"
+
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/tx"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-    "sync"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	lighttxtypes "github.com/cosmos/cosmos-sdk/x/light_tx/types"
 	rewardtypes "github.com/cosmos/cosmos-sdk/x/reward/types"
 	grpc "google.golang.org/grpc"
 )
 
-var txSignMutex sync.Mutex
+var txBroadcastMutex sync.Mutex
 
 func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientConn, msg types.LightTxMessage, addr string, power float64) (string, error) {
 	// --- clientCtx 필수 요소 가드 ---
@@ -48,6 +49,10 @@ func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientC
 	}
 
 	signer := clientCtx.GetFromAddress().String() // ← alice 주소
+
+	// 프로세스 잠금
+	txBroadcastMutex.Lock()
+	defer txBroadcastMutex.Unlock()
 
 	// 1) LightTx 메시지
 	var lightMsg sdk.Msg
@@ -136,16 +141,15 @@ func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientC
 	txf = txf.WithAccountNumber(accNum).WithSequence(seq)
 
 	// 5) 가스 시뮬레이션 → 여유 가스 산정
-_, gasWanted, err := tx.CalculateGas(clientCtx, txf, lightMsg, rewardMsg)
-if err != nil {
-	if strings.Contains(err.Error(), "[BroadcastLightTxWithReward] account sequence mismatch") {
-		fmt.Println("[BroadcastLightTxWithReward] sequence mismatch → 재시도")
-		time.Sleep(1 * time.Second)
-		return BroadcastLightTxWithReward(clientCtx, grpcConn, msg, addr, power)
+	_, gasWanted, err := tx.CalculateGas(clientCtx, txf, lightMsg, rewardMsg)
+	if err != nil {
+		if strings.Contains(err.Error(), "[BroadcastLightTxWithReward] account sequence mismatch") {
+			fmt.Println("[BroadcastLightTxWithReward] sequence mismatch → 재시도")
+			time.Sleep(1 * time.Second)
+			return BroadcastLightTxWithReward(clientCtx, grpcConn, msg, addr, power)
+		}
+		return "", fmt.Errorf("failed to simulate gas: %w", err)
 	}
-	return "", fmt.Errorf("failed to simulate gas: %w", err)
-}
-
 
 	adjustedGas := uint64(float64(gasWanted)*1.3) + 10000 // 여유치
 	txBuilder.SetGasLimit(adjustedGas)
@@ -164,9 +168,6 @@ if err != nil {
 	txBuilder.SetFeeAmount(fees)
 
 	// 7) 서명
-	txSignMutex.Lock()
-	defer txSignMutex.Unlock()
-
 	if err := tx.Sign(txf, fromName, txBuilder, true); err != nil {
 		return "", fmt.Errorf("failed to sign tx: %w", err)
 	}
