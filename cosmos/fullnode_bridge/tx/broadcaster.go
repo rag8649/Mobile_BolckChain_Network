@@ -1,14 +1,12 @@
 package tx
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
 	"os/exec"
-	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -27,10 +25,27 @@ import (
 	grpc "google.golang.org/grpc"
 )
 
-var txBroadcastMutex sync.Mutex
+var (
+	txBroadcastMutex sync.Mutex
+	accNumCache      uint64
+	seqCache         uint64
+	cacheInitialized bool
+)
 
-func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientConn, msg types.LightTxMessage, addr string, power float64) (string, error) {
-	// --- clientCtx 필수 요소 가드 ---
+// BroadcastLightTxWithReward : LightTx + Reward 트랜잭션 전송
+func BroadcastLightTxWithReward(
+	clientCtx client.Context,
+	grpcConn *grpc.ClientConn,
+	msg types.LightTxMessage,
+	addr string,
+	power float64,
+) (string, error) {
+
+	// 🔒 트랜잭션 전송 동시 접근 방지
+	txBroadcastMutex.Lock()
+	defer txBroadcastMutex.Unlock()
+
+	// --- ✅ 기본 검증 ---
 	if clientCtx.TxConfig == nil {
 		return "", fmt.Errorf("[BLT] clientCtx.TxConfig is nil")
 	}
@@ -43,18 +58,28 @@ func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientC
 	if clientCtx.FromName == "" || clientCtx.FromAddress.Empty() {
 		return "", fmt.Errorf("[BLT] clientCtx.FromName/FromAddress not set")
 	}
-
 	if power <= 0 {
 		return "", fmt.Errorf("[BLT] 보상할 발전량이 없습니다")
 	}
 
-	signer := clientCtx.GetFromAddress().String() // ← alice 주소
+	signer := clientCtx.GetFromAddress().String()
+	fromAddr := clientCtx.GetFromAddress()
+	fromName := clientCtx.FromName
 
-	// 프로세스 잠금
-	txBroadcastMutex.Lock()
-	defer txBroadcastMutex.Unlock()
+	// ✅ 최초 1회만 시퀀스/계정번호 조회
+	if !cacheInitialized {
+		accNum, seq, err := clientCtx.AccountRetriever.GetAccountNumberSequence(clientCtx, fromAddr)
+		if err != nil {
+			return "", fmt.Errorf("[BLT] 초기 AccountRetriever 실패: %w", err)
+		}
+		accNumCache = accNum
+		seqCache = seq
+		cacheInitialized = true
+	} else {
+		seqCache++ // ✅ 이전 트랜잭션 성공 가정 후 시퀀스 수동 증가
+	}
 
-	// 1) LightTx 메시지
+	// --- LightTx 메시지 구성 ---
 	var lightMsg sdk.Msg
 	if msg.Original != nil {
 		lightMsg = &lighttxtypes.MsgSendLightTx{
@@ -104,85 +129,107 @@ func BroadcastLightTxWithReward(clientCtx client.Context, grpcConn *grpc.ClientC
 		return "", fmt.Errorf("[BLT] no valid LightTx data")
 	}
 
-	// 2) Reward 메시지(수령자는 addr, 서명자는 alice)
-	if power <= 0 {
-		return "", fmt.Errorf("[BLT] 보상할 발전량이 없습니다")
-	}
+	// --- Reward 메시지 ---
 	rewardMsg := &rewardtypes.MsgRewardSolarPower{
 		Creator: signer,
-		Address: addr, // 보상받을 사용자 주소
+		Address: addr,
 		Amount:  strconv.FormatInt(int64(math.Round(power)), 10),
 	}
 
-	// 3) TxBuilder에 Msg 두 개 추가
+	// --- TxBuilder 구성 ---
 	txBuilder := clientCtx.TxConfig.NewTxBuilder()
 	if err := txBuilder.SetMsgs(lightMsg, rewardMsg); err != nil {
+		seqCache--
 		return "", fmt.Errorf("[BLT] failed to set msgs: %w", err)
 	}
 
-	// 4) Factory (0.45: PrepareFactory / CalculateFees 없음)
-	fromName := clientCtx.FromName
-	fromAddr := clientCtx.GetFromAddress()
-
+	// --- Factory 생성 ---
 	txf := tx.Factory{}.
 		WithChainID(clientCtx.ChainID).
 		WithTxConfig(clientCtx.TxConfig).
 		WithAccountRetriever(clientCtx.AccountRetriever).
-		WithGasAdjustment(1.2).      // 시뮬 보정치
-		WithGasPrices("0.025stake"). // 기준 가스프라이스
+		WithGasAdjustment(1.2).
+		WithGasPrices("0.025stake").
 		WithMemo("light-tx").
-		WithKeybase(clientCtx.Keyring)
+		WithKeybase(clientCtx.Keyring).
+		WithAccountNumber(accNumCache).
+		WithSequence(seqCache)
 
-	// 4-1) 계정번호/시퀀스 조회 후 팩토리에 주입
-	accNum, seq, err := clientCtx.AccountRetriever.GetAccountNumberSequence(clientCtx, fromAddr)
-	if err != nil {
-		return "", fmt.Errorf("[BLT] failed to get account/sequence: %w", err)
-	}
-	txf = txf.WithAccountNumber(accNum).WithSequence(seq)
-
-	// 5) 가스 시뮬레이션 → 여유 가스 산정
+	// --- 가스 시뮬레이션 ---
 	_, gasWanted, err := tx.CalculateGas(clientCtx, txf, lightMsg, rewardMsg)
 	if err != nil {
+		seqCache = forceSyncAccountSequence(clientCtx)
 		return "", fmt.Errorf("[BLT] failed to simulate gas: %w", err)
 	}
 
-	adjustedGas := uint64(float64(gasWanted)*1.3) + 10000 // 여유치
+	adjustedGas := uint64(float64(gasWanted)*1.3) + 10000
 	txBuilder.SetGasLimit(adjustedGas)
 
-	// 6) 수수료 수동 계산 (DecCoins → Coins)
-	gasPrices, err := sdk.ParseDecCoins("0.025stake")
-	if err != nil {
-		return "", fmt.Errorf("[BLT] invalid gas prices: %w", err)
-	}
+	// --- 수수료 계산 ---
+	gasPrices, _ := sdk.ParseDecCoins("0.025stake")
 	decGas := sdk.NewDec(int64(adjustedGas))
-	decFees := gasPrices.MulDec(decGas)  // DecCoins * Dec
-	fees, _ := decFees.TruncateDecimal() // Coins 로 반올림 버림
-	if fees.IsZero() {                   // 최소 1 udenom 같은 가드(옵션)
+	decFees := gasPrices.MulDec(decGas)
+	fees, _ := decFees.TruncateDecimal()
+	if fees.IsZero() {
 		fees = sdk.NewCoins(sdk.NewInt64Coin("stake", 1))
 	}
 	txBuilder.SetFeeAmount(fees)
 
-	// 7) 서명
+	// --- 서명 ---
 	if err := tx.Sign(txf, fromName, txBuilder, true); err != nil {
+		seqCache = forceSyncAccountSequence(clientCtx)
 		return "", fmt.Errorf("[BLT] failed to sign tx: %w", err)
 	}
 
-	// 8) 브로드캐스트
+	// --- 브로드캐스트 ---
 	txBytes, err := clientCtx.TxConfig.TxEncoder()(txBuilder.GetTx())
 	if err != nil {
+		seqCache = forceSyncAccountSequence(clientCtx)
 		return "", fmt.Errorf("[BLT] failed to encode tx: %w", err)
 	}
+
 	res, err := clientCtx.BroadcastTxCommit(txBytes)
 	if err != nil {
+		seqCache = forceSyncAccountSequence(clientCtx)
 		return "", fmt.Errorf("[BLT] broadcast failed: %w", err)
 	}
-	// code 체크 (0이 아니면 실패)
+
+	// --- 실패 처리 ---
 	if res.Code != 0 {
-		return res.TxHash, fmt.Errorf("[BLT] deliverTx failed: code=%d codespace=%s raw_log=%s", res.Code, res.Codespace, res.RawLog)
+		seqCache = forceSyncAccountSequence(clientCtx)
+		return res.TxHash, fmt.Errorf("[BLT] deliverTx failed: code=%d raw_log=%s", res.Code, res.RawLog)
 	}
 
-	fmt.Println("[BLT] 트랜잭션 전송 성공")
+	waitForNextBlock(clientCtx)
+
+	fmt.Printf("\033[32m[BLT] 성공 (accNum=%d seq=%d)\033[0m\n", accNumCache, seqCache)
 	return res.TxHash, nil
+}
+
+func forceSyncAccountSequence(clientCtx client.Context) uint64 {
+	fromAddr := clientCtx.GetFromAddress()
+	accNum, seq, err := clientCtx.AccountRetriever.GetAccountNumberSequence(clientCtx, fromAddr)
+	if err != nil {
+		fmt.Println("Sequence 재동기화 실패:", err)
+		return seqCache // 이전 값 유지
+	}
+	accNumCache = accNum
+	seqCache = seq
+	fmt.Println("Sequence 재동기화 완료:", seq)
+	return seq
+}
+
+func waitForNextBlock(clientCtx client.Context) {
+	status, _ := clientCtx.Client.Status(context.Background())
+	curHeight := status.SyncInfo.LatestBlockHeight
+
+	for {
+		time.Sleep(500 * time.Millisecond)
+		newStatus, _ := clientCtx.Client.Status(context.Background())
+		if newStatus.SyncInfo.LatestBlockHeight > curHeight {
+			break
+		}
+	}
 }
 
 // UserCheck.go
@@ -252,83 +299,15 @@ func sendBalanceTopic(address, balance string) error {
 	return err
 }
 
-// var txLock sync.Mutex
+// var reSeqMismatch = regexp.MustCompile(`expected\s+(\d+),\s*got\s+(\d+)`)
 
-// func SendRewardTxSafely(addr string, amount float64, creator bool) error {
-// 	txLock.Lock()
-// 	defer txLock.Unlock()
-// 	_, err := SendRewardTx(addr, amount, creator)
-// 	return err
+// func runTx(args []string) (stdout, stderr []byte, err error) {
+// 	cmd := exec.Command("build/simd", args...)
+// 	var outBuf, errBuf bytes.Buffer
+// 	cmd.Stdout, cmd.Stderr = &outBuf, &errBuf
+// 	err = cmd.Run()
+// 	return outBuf.Bytes(), errBuf.Bytes(), err
 // }
-
-var reSeqMismatch = regexp.MustCompile(`expected\s+(\d+),\s*got\s+(\d+)`)
-
-func runTx(args []string) (stdout, stderr []byte, err error) {
-	cmd := exec.Command("build/simd", args...)
-	var outBuf, errBuf bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &outBuf, &errBuf
-	err = cmd.Run()
-	return outBuf.Bytes(), errBuf.Bytes(), err
-}
-
-func SendRewardTx(toAddr string, reward float64) (string, error) {
-
-	amount := strconv.FormatInt(int64(math.Round(reward)), 10)
-
-	base := []string{
-		"tx", "reward", "reward-solar-power", toAddr, amount,
-		"--from", "alice",
-		"--chain-id", "learning-chain-1",
-		"--home", "private/.simapp",
-		"--keyring-backend", "test",
-		"--broadcast-mode", "sync",
-		"--output", "json",
-		"--node", "tcp://localhost:26657",
-		"--gas", "auto", "--gas-adjustment", "1.2",
-		"--fees", "100stake",
-		"--yes",
-	}
-
-	var stdout, stderr []byte
-	var err error
-
-	for attempt := 1; attempt <= 3; attempt++ {
-		stdout, stderr, err = runTx(base)
-		fmt.Printf("[Kafka: reward][try #%d] stdout: %s\n", attempt, stdout)
-
-		if err == nil {
-			break
-		}
-
-		// 시퀀스 mismatch면 expected로 다음 시도
-		if m := reSeqMismatch.FindStringSubmatch(string(stderr)); len(m) == 3 {
-			exp, _ := strconv.ParseUint(m[1], 10, 64)
-			fmt.Printf("[Kafka: reward] seq mismatch → expected=%d로 재시도\n", exp)
-			// base에 --sequence만 추가하여 덮어쓰기
-			base = append(base, "--sequence", fmt.Sprintf("%d", exp))
-			// 짧은 백오프
-			time.Sleep(200 * time.Millisecond)
-			continue
-		}
-		// 다른 오류면 바로 종료
-		break
-	}
-
-	if err != nil {
-		return "", fmt.Errorf("[Kafka: reward] 전송 실패: %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
-	}
-
-	go func(addr string) {
-		time.Sleep(10 * time.Second)
-		if balance, err := QueryBalance(addr); err != nil {
-			fmt.Printf("[Kafka: reward] 잔고 조회 실패: %v\n", err)
-		} else {
-			fmt.Printf("[Kafka: reward] %s 잔고: %s\n", addr, balance)
-		}
-	}(toAddr)
-
-	return "", nil
-}
 
 func SendTxHash(addr, hash string) error {
 	msg := types.TxHashResult{
@@ -357,68 +336,108 @@ func SendTxHash(addr, hash string) error {
 	return nil
 }
 
-// AddEnergyCLI : 발전량 기록 및 REC 계산
-func AddEnergyCLI(toAddr string, whAmt sdk.Int, txHash string) (int64, []*rewardtypes.Contributor, string, error) {
-	cmd := exec.Command("./build/simd", "tx", "reward", "add-energy",
-		toAddr, whAmt.String(), txHash,
-		"--from", "alice",
-		"--chain-id", "learning-chain-1",
-		"--keyring-backend", "test",
-		"--home", "private/.simapp",
-		"--gas", "auto",
-		"--gas-adjustment", "1.2",
-		"--yes",
-		"--broadcast-mode", "block",
-		"-o", "json", // JSON 출력 옵션
-	)
+var cliLock sync.Mutex // ✅ 전역에서 한 번 선언
 
-	out, err := cmd.CombinedOutput()
-	outputStr := string(out)
+func AddEnergyCLI(clientCtx client.Context, toAddr string, whAmt sdk.Int, txHash string) (int64, []*rewardtypes.Contributor, string, error) {
+	cliLock.Lock()
+	defer cliLock.Unlock()
 
+	msg := &rewardtypes.MsgAddEnergy{
+		Creator: clientCtx.GetFromAddress().String(),
+		To:      toAddr,
+		Amount:  whAmt.String(),
+		TxHash:  txHash,
+	}
+
+	txBuilder := clientCtx.TxConfig.NewTxBuilder()
+	if err := txBuilder.SetMsgs(msg); err != nil {
+		return 0, nil, "", fmt.Errorf("[AddEnergyCLI] SetMsgs 실패: %w", err)
+	}
+
+	fromAddr := clientCtx.GetFromAddress()
+
+	// ✅ seqCache 재사용
+	if !cacheInitialized {
+		accNum, seq, err := clientCtx.AccountRetriever.GetAccountNumberSequence(clientCtx, fromAddr)
+		if err != nil {
+			return 0, nil, "", fmt.Errorf("[AddEnergyCLI] AccountRetriever 실패: %w", err)
+		}
+		accNumCache = accNum
+		seqCache = seq
+		cacheInitialized = true
+	} else {
+		seqCache++
+	}
+
+	txf := tx.Factory{}.
+		WithChainID(clientCtx.ChainID).
+		WithTxConfig(clientCtx.TxConfig).
+		WithAccountRetriever(clientCtx.AccountRetriever).
+		WithKeybase(clientCtx.Keyring).
+		WithAccountNumber(accNumCache).
+		WithSequence(seqCache).
+		WithGasAdjustment(1.2).
+		WithGasPrices("0.025stake").
+		WithMemo("add-energy")
+
+	_, gasWanted, err := tx.CalculateGas(clientCtx, txf, msg)
 	if err != nil {
-		return 0, nil, outputStr, fmt.Errorf("AddEnergy CLI 실행 실패: %w", err)
+		seqCache--
+		return 0, nil, "", fmt.Errorf("[AddEnergyCLI] 가스 계산 실패: %w", err)
 	}
 
-	// --- gas estimate 텍스트 제거 → 마지막 줄만 JSON으로 파싱 ---
-	lines := strings.Split(strings.TrimSpace(outputStr), "\n")
-	jsonStr := lines[len(lines)-1]
+	gasLimit := uint64(float64(gasWanted)*1.3) + 10000
+	txBuilder.SetGasLimit(gasLimit)
 
-	// --- JSON 파싱 ---
-	var resp struct {
-		Logs []struct {
-			Events []struct {
-				Type       string `json:"type"`
-				Attributes []struct {
-					Key   string `json:"key"`
-					Value string `json:"value"`
-				} `json:"attributes"`
-			} `json:"events"`
-		} `json:"logs"`
+	// 수수료 계산
+	gasPrices, _ := sdk.ParseDecCoins("0.025stake")
+	decGas := sdk.NewDec(int64(gasLimit))
+	decFees := gasPrices.MulDec(decGas)
+	fees, _ := decFees.TruncateDecimal()
+	if fees.IsZero() {
+		fees = sdk.NewCoins(sdk.NewInt64Coin("stake", 1))
+	}
+	txBuilder.SetFeeAmount(fees)
+
+	if err := tx.Sign(txf, clientCtx.FromName, txBuilder, true); err != nil {
+		seqCache--
+		return 0, nil, "", fmt.Errorf("[AddEnergyCLI] 서명 실패: %w", err)
+	}
+	txBytes, err := clientCtx.TxConfig.TxEncoder()(txBuilder.GetTx())
+	if err != nil {
+		seqCache--
+		return 0, nil, "", fmt.Errorf("[AddEnergyCLI] 인코딩 실패: %w", err)
 	}
 
-	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
-		return 0, nil, outputStr, fmt.Errorf("AddEnergy JSON 파싱 실패: %w", err)
+	res, err := clientCtx.BroadcastTxCommit(txBytes)
+	if err != nil {
+		seqCache--
+		return 0, nil, "", fmt.Errorf("[AddEnergyCLI] 브로드캐스트 실패: %w", err)
+	}
+
+	if res.Code != 0 {
+		seqCache--
+		return 0, nil, res.RawLog, fmt.Errorf("[AddEnergyCLI] DeliverTx 실패: code=%d log=%s", res.Code, res.RawLog)
 	}
 
 	var recs int64
 	var contributors []*rewardtypes.Contributor
-
-	for _, log := range resp.Logs {
-		for _, ev := range log.Events {
-			if ev.Type == "add_energy" {
-				for _, attr := range ev.Attributes {
-					switch attr.Key {
-					case "recs":
-						fmt.Sscan(attr.Value, &recs)
-					case "contributors":
-						_ = json.Unmarshal([]byte(attr.Value), &contributors)
-					}
+	for _, ev := range res.Logs[0].Events {
+		if ev.Type == "add_energy" {
+			for _, attr := range ev.Attributes {
+				switch attr.Key {
+				case "recs":
+					fmt.Sscan(attr.Value, &recs)
+				case "contributors":
+					_ = json.Unmarshal([]byte(attr.Value), &contributors)
 				}
 			}
 		}
 	}
+	waitForNextBlock(clientCtx)
 
-	return recs, contributors, outputStr, nil
+	fmt.Printf("\033[32m[AddEnergyCLI] 성공 (seq=%d)\033[0m\n", seqCache)
+	return recs, contributors, res.RawLog, nil
 }
 
 func CreateRECRecordCLI(count int64) (string, error) {
@@ -440,40 +459,175 @@ func CreateRECRecordCLI(count int64) (string, error) {
 }
 
 // AppendTxHashCLI : LinkedList 노드 추가 (nodeCreator, recID 전달)
-func AppendTxHashCLI(nodeCreator string, recID string) (string, error) {
-	cmd := exec.Command("./build/simd", "tx", "reward", "append-tx-hash",
-		nodeCreator,       // MsgAppendTxHash.node_creator
-		recID,             // MsgAppendTxHash.rec_id
-		"--from", "alice", // signer 고정
-		"--chain-id", "learning-chain-1",
-		"--keyring-backend", "test",
-		"--home", "private/.simapp",
-		"--gas", "auto",
-		"--gas-adjustment", "1.2",
-		"--yes",
-		"--broadcast-mode", "sync",
-		"-o", "json",
-	)
+func CreateBlockCLI(clientCtx client.Context, nodeCreator, recID string) (string, error) {
+	cliLock.Lock()
+	defer cliLock.Unlock()
 
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	msg := &rewardtypes.MsgAppendTxHash{
+		NodeCreator: nodeCreator,
+		RecId:       recID,
+		Creator:     clientCtx.GetFromAddress().String(),
+	}
+
+	txBuilder := clientCtx.TxConfig.NewTxBuilder()
+	if err := txBuilder.SetMsgs(msg); err != nil {
+		return "", fmt.Errorf("[CreateBlockCLI] SetMsgs 실패: %w", err)
+	}
+
+	fromAddr := clientCtx.GetFromAddress()
+
+	// ✅ AccountNumber / Sequence 캐시 재사용
+	if !cacheInitialized {
+		accNum, seq, err := clientCtx.AccountRetriever.GetAccountNumberSequence(clientCtx, fromAddr)
+		if err != nil {
+			return "", fmt.Errorf("[CreateBlockCLI] AccountRetriever 실패: %w", err)
+		}
+		accNumCache = accNum
+		seqCache = seq
+		cacheInitialized = true
+	} else {
+		seqCache++
+	}
+
+	txf := tx.Factory{}.
+		WithChainID(clientCtx.ChainID).
+		WithTxConfig(clientCtx.TxConfig).
+		WithAccountRetriever(clientCtx.AccountRetriever).
+		WithKeybase(clientCtx.Keyring).
+		WithAccountNumber(accNumCache).
+		WithSequence(seqCache).
+		WithGasAdjustment(1.2).
+		WithGasPrices("0.025stake").
+		WithMemo("append-tx-hash")
+
+	_, gasWanted, err := tx.CalculateGas(clientCtx, txf, msg)
+	if err != nil {
+		seqCache--
+		return "", fmt.Errorf("[CreateBlockCLI] 가스 계산 실패: %w", err)
+	}
+
+	gasLimit := uint64(float64(gasWanted)*1.2) + 10000
+	txBuilder.SetGasLimit(gasLimit)
+
+	// 수수료 계산
+	gasPrices, _ := sdk.ParseDecCoins("0.025stake")
+	decGas := sdk.NewDec(int64(gasLimit))
+	decFees := gasPrices.MulDec(decGas)
+	fees, _ := decFees.TruncateDecimal()
+	if fees.IsZero() {
+		fees = sdk.NewCoins(sdk.NewInt64Coin("stake", 1))
+	}
+	txBuilder.SetFeeAmount(fees)
+
+	// 서명
+	if err := tx.Sign(txf, clientCtx.FromName, txBuilder, true); err != nil {
+		seqCache--
+		return "", fmt.Errorf("[CreateBlockCLI] 서명 실패: %w", err)
+	}
+	txBytes, err := clientCtx.TxConfig.TxEncoder()(txBuilder.GetTx())
+	if err != nil {
+		seqCache--
+		return "", fmt.Errorf("[CreateBlockCLI] 인코딩 실패: %w", err)
+	}
+
+	// 트랜잭션 전송
+	res, err := clientCtx.BroadcastTxCommit(txBytes)
+	if err != nil {
+		seqCache--
+		return "", fmt.Errorf("[CreateBlockCLI] 브로드캐스트 실패: %w", err)
+	}
+
+	if res.Code != 0 {
+		seqCache--
+		return res.RawLog, fmt.Errorf("[CreateBlockCLI] DeliverTx 실패: code=%d log=%s", res.Code, res.RawLog)
+	}
+
+	fmt.Printf("\033[32m[CreateBlockCLI] 성공 (seq=%d)\033[0m\n", seqCache)
+	waitForNextBlock(clientCtx)
+	return res.TxHash, nil
 }
 
-func DistributeRewardPercentCLI(address string, percent float64) (string, error) {
-	cmd := exec.Command(
-		"./build/simd", "tx", "reward", "distribute-reward-percent",
-		address, strconv.FormatFloat(percent, 'f', -1, 64),
-		"--from", "alice",
-		"--chain-id", "learning-chain-1",
-		"--keyring-backend", "test",
-		"--home", "private/.simapp",
-		"--gas", "auto",
-		"--gas-adjustment", "1.2",
-		"--yes",
-		"--broadcast-mode", "block",
-		"-o", "json", // JSON 출력
-	)
+func BlockCreatorRewardPercentCLI(clientCtx client.Context, address string, percent string) (string, error) {
+	cliLock.Lock()
+	defer cliLock.Unlock()
 
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	msg := &rewardtypes.MsgDistributeRewardPercent{
+		Creator: clientCtx.GetFromAddress().String(),
+		Address: address,
+		Percent: percent,
+	}
+
+	txBuilder := clientCtx.TxConfig.NewTxBuilder()
+	if err := txBuilder.SetMsgs(msg); err != nil {
+		return "", fmt.Errorf("[BlockCreatorReward] SetMsgs 실패: %w", err)
+	}
+
+	fromAddr := clientCtx.GetFromAddress()
+
+	// ✅ AccountNumber / Sequence 캐시 재사용
+	if !cacheInitialized {
+		accNum, seq, err := clientCtx.AccountRetriever.GetAccountNumberSequence(clientCtx, fromAddr)
+		if err != nil {
+			return "", fmt.Errorf("[BlockCreatorReward] AccountRetriever 실패: %w", err)
+		}
+		accNumCache = accNum
+		seqCache = seq
+		cacheInitialized = true
+	} else {
+		seqCache++
+	}
+
+	txf := tx.Factory{}.
+		WithChainID(clientCtx.ChainID).
+		WithTxConfig(clientCtx.TxConfig).
+		WithAccountRetriever(clientCtx.AccountRetriever).
+		WithKeybase(clientCtx.Keyring).
+		WithAccountNumber(accNumCache).
+		WithSequence(seqCache).
+		WithGasAdjustment(1.2).
+		WithGasPrices("0.025stake").
+		WithMemo("distribute-reward-percent")
+
+	_, gasWanted, err := tx.CalculateGas(clientCtx, txf, msg)
+	if err != nil {
+		seqCache--
+		return "", fmt.Errorf("[BlockCreatorReward] 가스 계산 실패: %w", err)
+	}
+
+	gasLimit := uint64(float64(gasWanted)*1.3) + 10000
+	txBuilder.SetGasLimit(gasLimit)
+
+	gasPrices, _ := sdk.ParseDecCoins("0.025stake")
+	decGas := sdk.NewDec(int64(gasLimit))
+	decFees := gasPrices.MulDec(decGas)
+	fees, _ := decFees.TruncateDecimal()
+	if fees.IsZero() {
+		fees = sdk.NewCoins(sdk.NewInt64Coin("stake", 1))
+	}
+	txBuilder.SetFeeAmount(fees)
+
+	if err := tx.Sign(txf, clientCtx.FromName, txBuilder, true); err != nil {
+		seqCache--
+		return "", fmt.Errorf("[BlockCreatorReward] 서명 실패: %w", err)
+	}
+	txBytes, err := clientCtx.TxConfig.TxEncoder()(txBuilder.GetTx())
+	if err != nil {
+		seqCache--
+		return "", fmt.Errorf("[BlockCreatorReward] 인코딩 실패: %w", err)
+	}
+
+	res, err := clientCtx.BroadcastTxCommit(txBytes)
+	if err != nil {
+		seqCache--
+		return "", fmt.Errorf("[BlockCreatorReward] 브로드캐스트 실패: %w", err)
+	}
+
+	if res.Code != 0 {
+		seqCache--
+		return res.RawLog, fmt.Errorf("[BlockCreatorReward] DeliverTx 실패: code=%d log=%s", res.Code, res.RawLog)
+	}
+
+	fmt.Printf("\033[32m[BlockCreatorReward] 성공 (seq=%d)\033[0m\n", seqCache)
+	waitForNextBlock(clientCtx)
+	return res.TxHash, nil
 }

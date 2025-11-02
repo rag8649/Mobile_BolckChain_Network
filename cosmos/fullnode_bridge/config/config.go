@@ -8,7 +8,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func InitConfig() {
+func InitConfig() error {
 	// .env 파일 로드
 	if err := godotenv.Load("fullnode_bridge/.env"); err != nil {
 		log.Println("⚠️ .env 파일을 찾을 수 없습니다. 기본값을 사용합니다.")
@@ -21,6 +21,8 @@ func InitConfig() {
 	} else {
 		KafkaBrokers = []string{"localhost:9092"} // 기본값
 	}
+
+	return nil
 }
 
 var (

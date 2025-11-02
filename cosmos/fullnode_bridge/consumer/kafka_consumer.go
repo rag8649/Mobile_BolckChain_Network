@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -61,6 +62,8 @@ type BlockCreatorMsg struct {
 	FullnodeID   string  `json:"fullnode_id"`
 }
 
+var TxQueue = make(chan func(), 100) // 투표 queue
+
 func (h *lightTxHandler) Setup(_ sarama.ConsumerGroupSession) error   { return nil }
 func (h *lightTxHandler) Cleanup(_ sarama.ConsumerGroupSession) error { return nil }
 
@@ -77,7 +80,9 @@ func (h *lightTxHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 		for len(txMsg.Pubkey)%4 != 0 {
 			txMsg.Pubkey += "="
 		}
+
 		pubkeyBytes, err := base64.StdEncoding.DecodeString(txMsg.Pubkey)
+
 		if err != nil {
 			fmt.Println("[Kafka: Solar data] 퍼블릭키 디코딩 실패:", err)
 			continue
@@ -154,95 +159,97 @@ func startVoteTimer(producer sarama.SyncProducer, hash string) {
 	// 투표 수집 대기
 	time.Sleep(3 * time.Second)
 
-	// 필요한 데이터만 뽑고 Lock 해제
-	VoteMutex.Lock()
-	entries, ok := VoteMap[hash]
-	if !ok || len(entries) == 0 {
-		VoteMutex.Unlock()
-		return
-	}
-
-	// 고유 주소 집합 만들기
-	unique := map[string]bool{}
-	for _, e := range entries {
-		unique[e.Address] = true
-	}
-	var uniqueList []string
-	for k := range unique {
-		uniqueList = append(uniqueList, k)
-	}
-
-	// TxMsg 복사
-	txMsg := entries[0].TxMsg
-
-	// cleanup
-	delete(VoteMap, hash)
-	VoteMutex.Unlock()
-
-	// -------------------------
-	// ⚡ Lock 해제 후 처리 시작
-	// -------------------------
-	// fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
-	fmt.Printf("[startVoteTimer] 서명자 리스트: %v\n", uniqueList)
-
-	needed := VoteMemberCount/2 + 1
-	if len(uniqueList) < needed {
-		fmt.Println("[startVoteTimer] 투표자 수 미달")
-		return
-	}
-	// 검증자 보상
-	SendValidatorMembers(uniqueList)
-
-	// userAddress 찾기
-	addr, ok := deviceAddressMap.Load(DeviceID[txMsg.Hash])
-	if !ok {
-		fmt.Printf("[startVoteTimer] 주소 비어있음 (hash=%s)\n", txMsg.Hash)
-		return
-	}
-	userAddress := addr.(string)
-
-	var power float64
-	if txMsg.Original != nil {
-		power = txMsg.Original.TotalEnergy
-	} else if txMsg.REC != nil {
-		mwh, _ := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
-		power = mwh * 1_000_000 // MWh → Wh
-	}
-
-	txHash, err := tx.BroadcastLightTxWithReward(clientCtx, GRPCConn, txMsg, userAddress, power)
-	if err != nil {
-		fmt.Println("[startVoteTimer] 트랜잭션 전송 실패:", err)
-	} else {
-		whAmt := sdk.NewInt(int64(math.Round(power)))
-
-		// AddEnergy 실행
-		recs, contributors, output, err := tx.AddEnergyCLI(userAddress, whAmt, txHash)
-		if err != nil {
-			fmt.Println("[startVoteTimer] AddEnergyCLI 실행 실패:", err)
-			fmt.Println("출력:", output)
+	TxQueue <- func() {
+		// 필요한 데이터만 뽑고 Lock 해제
+		VoteMutex.Lock()
+		entries, ok := VoteMap[hash]
+		if !ok || len(entries) == 0 {
+			VoteMutex.Unlock()
 			return
 		}
 
-		// REC 발급 조건 확인
-		if recs > 0 {
-			RECCount = recs
+		// 고유 주소 집합 만들기
+		unique := map[string]bool{}
+		for _, e := range entries {
+			unique[e.Address] = true
+		}
+		var uniqueList []string
+		for k := range unique {
+			uniqueList = append(uniqueList, k)
+		}
 
-			// Kafka로 기여자 리스트 전송
-			data := map[string]interface{}{
-				"fullnode_id":  config.FullnodeID,
-				"contributors": contributors,
-			}
-			bytes, _ := json.Marshal(data)
+		// TxMsg 복사
+		txMsg := entries[0].TxMsg
 
-			kafkaMsg := &sarama.ProducerMessage{
-				Topic: config.TopicContributors,
-				Value: sarama.ByteEncoder(bytes),
-			}
-			_, _, err = producer.SendMessage(kafkaMsg)
+		// cleanup
+		delete(VoteMap, hash)
+		VoteMutex.Unlock()
+
+		// -------------------------
+		// ⚡ Lock 해제 후 처리 시작
+		// -------------------------
+		// fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
+		fmt.Printf("[startVoteTimer] 서명자 리스트: %v\n", uniqueList)
+
+		needed := VoteMemberCount/2 + 1
+		if len(uniqueList) < needed {
+			fmt.Println("[startVoteTimer] 투표자 수 미달")
+			return
+		}
+		// 검증자 보상
+		SendValidatorMembers(uniqueList)
+
+		// userAddress 찾기
+		addr, ok := deviceAddressMap.Load(DeviceID[txMsg.Hash])
+		if !ok {
+			fmt.Printf("[startVoteTimer] 주소 비어있음 (hash=%s)\n", txMsg.Hash)
+			return
+		}
+		userAddress := addr.(string)
+
+		var power float64
+		if txMsg.Original != nil {
+			power = txMsg.Original.TotalEnergy
+		} else if txMsg.REC != nil {
+			mwh, _ := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
+			power = mwh * 1_000_000 // MWh → Wh
+		}
+
+		txHash, err := tx.BroadcastLightTxWithReward(clientCtx, GRPCConn, txMsg, userAddress, power)
+		if err != nil {
+			fmt.Println("[startVoteTimer] 트랜잭션 전송 실패:", err)
+		} else {
+			whAmt := sdk.NewInt(int64(math.Round(power)))
+
+			// AddEnergy 실행
+			recs, contributors, output, err := tx.AddEnergyCLI(clientCtx, userAddress, whAmt, txHash)
 			if err != nil {
-				fmt.Println("[startVoteTimer] 기여자 리스트 전송 실패:", err)
-			} else {
-				fmt.Println("[startVoteTimer] 기여자 리스트 전송 성공 (RECCount:", RECCount, ")")
+				fmt.Println("[startVoteTimer] AddEnergyCLI 실행 실패:", err)
+				fmt.Println("출력:", output)
+				return
+			}
+
+			// REC 발급 조건 확인
+			if recs > 0 {
+				RECCount = recs
+
+				// Kafka로 기여자 리스트 전송
+				data := map[string]interface{}{
+					"fullnode_id":  config.FullnodeID,
+					"contributors": contributors,
+				}
+				bytes, _ := json.Marshal(data)
+
+				kafkaMsg := &sarama.ProducerMessage{
+					Topic: config.TopicContributors,
+					Value: sarama.ByteEncoder(bytes),
+				}
+				_, _, err = producer.SendMessage(kafkaMsg)
+				if err != nil {
+					fmt.Println("[startVoteTimer] 기여자 리스트 전송 실패:", err)
+				} else {
+					fmt.Println("[startVoteTimer] 기여자 리스트 전송 성공 (RECCount:", RECCount, ")")
+				}
 			}
 		}
 	}
@@ -426,77 +433,84 @@ func StartBlockCreatorConsumer() {
 
 func handleBlockCreatorMessage(msg []byte) {
 	var data BlockCreatorMsg
-	if err := json.Unmarshal(msg, &data); err != nil {
-		fmt.Printf("[BlockCreator] JSON 파싱 실패: %v\n", err)
-		return
-	}
+	TxQueue <- func() {
+		if err := json.Unmarshal(msg, &data); err != nil {
+			fmt.Printf("[BlockCreator] JSON 파싱 실패: %v\n", err)
+			return
+		}
 
-	// 🔹 Fullnode 검증
-	if data.FullnodeID != config.FullnodeID {
-		fmt.Printf("[BlockCreator] Fullnode ID 불일치 → 무시 (got=%s, expected=%s)\n",
-			data.FullnodeID, config.FullnodeID)
-		return
-	}
+		// 🔹 Fullnode 검증
+		if data.FullnodeID != config.FullnodeID {
+			fmt.Printf("[BlockCreator] Fullnode ID 불일치 → 무시 (got=%s, expected=%s)\n",
+				data.FullnodeID, config.FullnodeID)
+			return
+		}
 
-	fmt.Printf("[BlockCreator] 블록 생성자: %s\n", data.Creator)
+		fmt.Printf("[BlockCreator] 블록 생성자: %s\n", data.Creator)
 
-	// === 최종 REC 발급 ===
-	if RECCount <= 0 {
-		fmt.Println("[BlockCreator] 발급할 REC 없음 (RECCount=0)")
-		return
-	}
+		// === 최종 REC 발급 ===
+		if RECCount <= 0 {
+			fmt.Println("[BlockCreator] 발급할 REC 없음 (RECCount=0)")
+			return
+		}
 
-	fmt.Printf("[BlockCreator] REC 발급 시작 (count=%d)\n", RECCount)
-	output, err := tx.CreateRECRecordCLI(RECCount)
-	if err != nil {
-		fmt.Println("[BlockCreator] CreateRECRecordCLI 실패:", err)
+		fmt.Printf("[BlockCreator] REC 발급 시작 (count=%d)\n", RECCount)
+		output, err := tx.CreateRECRecordCLI(RECCount)
+		if err != nil {
+			fmt.Println("[BlockCreator] CreateRECRecordCLI 실패:", err)
+			RECCount = 0
+			return
+		}
+
+		// 🔹 JSON 부분만 추출
+		idx := strings.Index(output, "{")
+		if idx == -1 {
+			fmt.Println("[BlockCreator] 출력에서 JSON 시작점을 찾을 수 없음")
+			RECCount = 0
+			return
+		}
+		jsonPart := output[idx:]
+
+		// 🔹 TxResponse 파싱
+		var resp TxResponse
+		if err := json.Unmarshal([]byte(jsonPart), &resp); err != nil {
+			fmt.Println("[BlockCreator] JSON 파싱 실패:", err)
+			RECCount = 0
+			return
+		}
+
+		// 🔹 rec_id 추출 (logs에서 그대로 사용)
+		recID := extractRecID(resp)
+		if recID == "" {
+			fmt.Println("[BlockCreator] rec_id를 찾을 수 없음")
+			RECCount = 0
+			return
+		}
+
+		creator := strings.TrimPrefix(data.Creator, "/")
+		fmt.Println("[BlockCreator] Block 생성자:", creator)
+
+		// === AppendTxHash 트랜잭션 실행 ===
+		output, err = tx.CreateBlockCLI(clientCtx, creator, recID)
+		if err != nil {
+			fmt.Println("[BlockCreator] Block 생성 실패:", err)
+			fmt.Println("[BlockCreator] 출력:", output)
+		} else {
+			fmt.Println("[BlockCreator] Block 생성:", output)
+		}
+
+		// 발급 후 RECCount 리셋
 		RECCount = 0
-		return
-	}
 
-	// 🔹 JSON 부분만 추출
-	idx := strings.Index(output, "{")
-	if idx == -1 {
-		fmt.Println("[BlockCreator] 출력에서 JSON 시작점을 찾을 수 없음")
-		RECCount = 0
-		return
-	}
-	jsonPart := output[idx:]
+		time.Sleep(500 * time.Millisecond)
 
-	// 🔹 TxResponse 파싱
-	var resp TxResponse
-	if err := json.Unmarshal([]byte(jsonPart), &resp); err != nil {
-		fmt.Println("[BlockCreator] JSON 파싱 실패:", err)
-		RECCount = 0
-		return
-	}
-
-	// 🔹 rec_id 추출 (logs에서 그대로 사용)
-	recID := extractRecID(resp)
-	if recID == "" {
-		fmt.Println("[BlockCreator] rec_id를 찾을 수 없음")
-		RECCount = 0
-		return
-	}
-
-	// === AppendTxHash 트랜잭션 실행 ===
-	output, err = tx.AppendTxHashCLI(data.Creator, recID)
-	if err != nil {
-		fmt.Println("[BlockCreator] Block 생성 실패:", err)
-		fmt.Println("[BlockCreator] 출력:", output)
-	} else {
-		fmt.Println("[BlockCreator] Block 생성:", output)
-	}
-
-	// 발급 후 RECCount 리셋
-	RECCount = 0
-
-	output, err = tx.DistributeRewardPercentCLI(data.Creator, 10)
-	if err != nil {
-		fmt.Println("[BlockCreator] 블록 생성 보상 실패:", err)
-		fmt.Println("[BlockCreator] 출력:", output)
-	} else {
-		fmt.Println("[BlockCreator] 블록 생성 보상 지급:", output)
+		output, err = tx.BlockCreatorRewardPercentCLI(clientCtx, creator, "0.1")
+		if err != nil {
+			fmt.Println("[BlockCreator] 블록 생성 보상 실패:", err)
+			fmt.Println("[BlockCreator] 출력:", output)
+		} else {
+			fmt.Println("[BlockCreator] 블록 생성 보상 지급:", output)
+		}
 	}
 }
 
@@ -523,15 +537,26 @@ func extractRecID(resp TxResponse) string {
 
 func StartConsumer() {
 
-	config.InitConfig()
+	if err := config.InitConfig(); err != nil {
+		log.Fatal("❌ Config init failed:", err)
+	} else {
 
-	go StartSolarKafkaConsumer()    // 태양광 발전량 토픽
-	go StartVoteMemberConsumer()    // 회원 수 토픽
-	go StartDeviceAddressConsumer() // 디바이스 id, 주소 매핑 토픽
+		time.Sleep(1 * time.Second)
 
-	go StartCollateralConsumer()   // 담보 예치 요청 토픽
-	go StartBurnConsumer()         // 소각 요청 토픽
-	go StartBalanceConsumer()      // 잔고 확인 토픽
-	go StartBlockCreatorConsumer() // 블록 생성
-	// go CheckLiquidation()          // REC 가격 조회
+		go StartVoteMemberConsumer()    // 회원 수 토픽
+		go StartDeviceAddressConsumer() // 디바이스 id, 주소 매핑 토픽
+
+		go StartCollateralConsumer()   // 담보 예치 요청 토픽
+		go StartBurnConsumer()         // 소각 요청 토픽
+		go StartBalanceConsumer()      // 잔고 확인 토픽
+		go StartBlockCreatorConsumer() // 블록 생성
+
+		go StartSolarKafkaConsumer() // 태양광 발전량 토픽
+	}
+
+	go func() {
+		for task := range TxQueue {
+			task()
+		}
+	}()
 }
