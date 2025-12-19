@@ -159,62 +159,62 @@ func startVoteTimer(producer sarama.SyncProducer, hash string) {
 	// 투표 수집 대기
 	time.Sleep(3 * time.Second)
 
-	TxQueue <- func() {
-		// 필요한 데이터만 뽑고 Lock 해제
-		VoteMutex.Lock()
-		entries, ok := VoteMap[hash]
-		if !ok || len(entries) == 0 {
-			VoteMutex.Unlock()
-			return
-		}
-
-		// 고유 주소 집합 만들기
-		unique := map[string]bool{}
-		for _, e := range entries {
-			unique[e.Address] = true
-		}
-		var uniqueList []string
-		for k := range unique {
-			uniqueList = append(uniqueList, k)
-		}
-
-		// TxMsg 복사
-		txMsg := entries[0].TxMsg
-
-		// cleanup
-		delete(VoteMap, hash)
+	// 필요한 데이터만 뽑고 Lock 해제
+	VoteMutex.Lock()
+	entries, ok := VoteMap[hash]
+	if !ok || len(entries) == 0 {
 		VoteMutex.Unlock()
+		return
+	}
 
-		// -------------------------
-		// ⚡ Lock 해제 후 처리 시작
-		// -------------------------
-		// fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
-		fmt.Printf("[startVoteTimer] 서명자 리스트: %v\n", uniqueList)
+	// 고유 주소 집합 만들기
+	unique := map[string]bool{}
+	for _, e := range entries {
+		unique[e.Address] = true
+	}
+	var uniqueList []string
+	for k := range unique {
+		uniqueList = append(uniqueList, k)
+	}
 
-		needed := VoteMemberCount/2 + 1
-		if len(uniqueList) < needed {
-			fmt.Println("[startVoteTimer] 투표자 수 미달")
-			return
-		}
-		// 검증자 보상
-		SendValidatorMembers(uniqueList)
+	// TxMsg 복사
+	txMsg := entries[0].TxMsg
 
-		// userAddress 찾기
-		addr, ok := deviceAddressMap.Load(DeviceID[txMsg.Hash])
-		if !ok {
-			fmt.Printf("[startVoteTimer] 주소 비어있음 (hash=%s)\n", txMsg.Hash)
-			return
-		}
-		userAddress := addr.(string)
+	// cleanup
+	delete(VoteMap, hash)
+	VoteMutex.Unlock()
 
-		var power float64
-		if txMsg.Original != nil {
-			power = txMsg.Original.TotalEnergy
-		} else if txMsg.REC != nil {
-			mwh, _ := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
-			power = mwh * 1_000_000 // MWh → Wh
-		}
+	// -------------------------
+	// ⚡ Lock 해제 후 처리 시작
+	// -------------------------
+	// fmt.Println("[Kafka: Solar data] 서명 조건 충족, 트랜잭션 전송 시작")
+	fmt.Printf("[startVoteTimer] 서명자 리스트: %v\n", uniqueList)
 
+	// needed := VoteMemberCount/2 + 1
+	// if len(uniqueList) < needed {
+	// 	fmt.Println("[startVoteTimer] 투표자 수 미달")
+	// 	return
+	// }
+	// 검증자 보상
+	SendValidatorMembers(uniqueList)
+
+	// userAddress 찾기
+	addr, ok := deviceAddressMap.Load(DeviceID[txMsg.Hash])
+	if !ok {
+		fmt.Printf("[startVoteTimer] 주소 비어있음 (hash=%s)\n", txMsg.Hash)
+		return
+	}
+	userAddress := addr.(string)
+
+	var power float64
+	if txMsg.Original != nil {
+		power = txMsg.Original.TotalEnergy
+	} else if txMsg.REC != nil {
+		mwh, _ := strconv.ParseFloat(txMsg.REC.MeasuredVolumeMWh, 64)
+		power = mwh * 1_000_000 // MWh → Wh
+	}
+
+	TxQueue <- func() {
 		txHash, err := tx.BroadcastLightTxWithReward(clientCtx, GRPCConn, txMsg, userAddress, power)
 		if err != nil {
 			fmt.Println("[startVoteTimer] 트랜잭션 전송 실패:", err)
@@ -433,106 +433,78 @@ func StartBlockCreatorConsumer() {
 
 func handleBlockCreatorMessage(msg []byte) {
 	var data BlockCreatorMsg
+	if err := json.Unmarshal(msg, &data); err != nil {
+		fmt.Printf("[BlockCreator] JSON 파싱 실패: %v\n", err)
+		return
+	}
+
+	// 🔹 Fullnode 검증
+	if data.FullnodeID != config.FullnodeID {
+		fmt.Printf("[BlockCreator] Fullnode ID 불일치 → 무시 (got=%s, expected=%s)\n",
+			data.FullnodeID, config.FullnodeID)
+		return
+	}
+
+	fmt.Printf("[BlockCreator] 블록 생성자: %s\n", data.Creator)
+
+	// === 최종 REC 발급 ===
+	if RECCount <= 0 {
+		fmt.Println("[BlockCreator] 발급할 REC 없음 (RECCount=0)")
+		return
+	}
 	TxQueue <- func() {
-		if err := json.Unmarshal(msg, &data); err != nil {
-			fmt.Printf("[BlockCreator] JSON 파싱 실패: %v\n", err)
-			return
-		}
-
-		// 🔹 Fullnode 검증
-		if data.FullnodeID != config.FullnodeID {
-			fmt.Printf("[BlockCreator] Fullnode ID 불일치 → 무시 (got=%s, expected=%s)\n",
-				data.FullnodeID, config.FullnodeID)
-			return
-		}
-
-		fmt.Printf("[BlockCreator] 블록 생성자: %s\n", data.Creator)
-
-		// === 최종 REC 발급 ===
-		if RECCount <= 0 {
-			fmt.Println("[BlockCreator] 발급할 REC 없음 (RECCount=0)")
-			return
-		}
-
 		fmt.Printf("[BlockCreator] REC 발급 시작 (count=%d)\n", RECCount)
-		output, err := tx.CreateRECRecordCLI(RECCount)
+
+		// ✅ CreateRECRecordCLI가 []string 반환
+		recIDs, err := tx.CreateRECRecordCLI(clientCtx, RECCount)
 		if err != nil {
 			fmt.Println("[BlockCreator] CreateRECRecordCLI 실패:", err)
 			RECCount = 0
 			return
 		}
 
-		// 🔹 JSON 부분만 추출
-		idx := strings.Index(output, "{")
-		if idx == -1 {
-			fmt.Println("[BlockCreator] 출력에서 JSON 시작점을 찾을 수 없음")
-			RECCount = 0
-			return
-		}
-		jsonPart := output[idx:]
-
-		// 🔹 TxResponse 파싱
-		var resp TxResponse
-		if err := json.Unmarshal([]byte(jsonPart), &resp); err != nil {
-			fmt.Println("[BlockCreator] JSON 파싱 실패:", err)
+		if len(recIDs) == 0 {
+			fmt.Println("[BlockCreator] 생성된 REC ID가 없습니다.")
 			RECCount = 0
 			return
 		}
 
-		// 🔹 rec_id 추출 (logs에서 그대로 사용)
-		recID := extractRecID(resp)
-		if recID == "" {
-			fmt.Println("[BlockCreator] rec_id를 찾을 수 없음")
-			RECCount = 0
-			return
-		}
+		fmt.Printf("[BlockCreator] RECRecord %d개 생성 완료: %v\n", len(recIDs), recIDs)
 
+		// === 블록 생성자 ===
 		creator := strings.TrimPrefix(data.Creator, "/")
 		fmt.Println("[BlockCreator] Block 생성자:", creator)
 
-		// === AppendTxHash 트랜잭션 실행 ===
-		output, err = tx.CreateBlockCLI(clientCtx, creator, recID)
-		if err != nil {
-			fmt.Println("[BlockCreator] Block 생성 실패:", err)
-			fmt.Println("[BlockCreator] 출력:", output)
-		} else {
-			fmt.Println("[BlockCreator] Block 생성:", output)
+		// === 각 REC에 대해 CreateBlockCLI 실행 ===
+		for i, recID := range recIDs {
+			fmt.Printf("[BlockCreator] (%d/%d) REC 블록 생성 시작: %s\n", i+1, len(recIDs), recID)
+
+			output, err := tx.CreateBlockCLI(clientCtx, creator, recID)
+			if err != nil {
+				fmt.Printf("[BlockCreator] REC 블록 생성 실패 (%s): %v\n", recID, err)
+				fmt.Println("[BlockCreator] 출력:", output)
+			} else {
+				fmt.Printf("[BlockCreator] REC 블록 생성 성공 (%s): %s\n", recID, output)
+			}
+
+			// 다음 트랜잭션 전까지 잠깐 대기 (시퀀스 충돌 방지)
+			time.Sleep(300 * time.Millisecond)
 		}
 
-		// 발급 후 RECCount 리셋
-		RECCount = 0
-
+		// === 보상 지급 ===
 		time.Sleep(500 * time.Millisecond)
-
-		output, err = tx.BlockCreatorRewardPercentCLI(clientCtx, creator, "0.1")
+		output, err := tx.BlockCreatorRewardPercentCLI(clientCtx, creator, "0.1")
 		if err != nil {
 			fmt.Println("[BlockCreator] 블록 생성 보상 실패:", err)
 			fmt.Println("[BlockCreator] 출력:", output)
 		} else {
 			fmt.Println("[BlockCreator] 블록 생성 보상 지급:", output)
 		}
+
+		// 발급 후 RECCount 리셋
+		RECCount = 0
 	}
-}
 
-// 🔹 rec_id 추출 로직 (logs 기준 → base64 디코딩 불필요)
-func extractRecID(resp TxResponse) string {
-	for _, e := range resp.Logs {
-		for _, ev := range e.Events {
-
-			if ev.Type != "create_rec_record" {
-				continue
-			}
-
-			for _, attr := range ev.Attributes {
-
-				if attr.Key == "rec_id" {
-					return attr.Value
-				}
-			}
-		}
-	}
-	fmt.Println("[extractRecID] rec_id를 찾지 못함")
-	return ""
 }
 
 func StartConsumer() {

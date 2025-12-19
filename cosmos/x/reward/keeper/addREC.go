@@ -102,6 +102,7 @@ func (k Keeper) CreateRECRecord(ctx sdk.Context, count int64) ([]string, error) 
 
 		ctx.Logger().Info("[LightTx] RECRecord 생성", "rec_id", rec.RecId)
 		recIDs = append(recIDs, recID)
+
 	}
 
 	return recIDs, nil

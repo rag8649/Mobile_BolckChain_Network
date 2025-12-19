@@ -31,7 +31,7 @@ func (h *balanceHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 		}
 
 		// 잔고 조회
-		balanceJSON, err := tx.QueryBalance(authMsg.Address)
+		balanceJSON, err := tx.QueryBalance(authMsg.NodeID, authMsg.Address)
 		if err != nil {
 			fmt.Println("[Kafka: Balance] 잔고 조회 실패:", err)
 			continue

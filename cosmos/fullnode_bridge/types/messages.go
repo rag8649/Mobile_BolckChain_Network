@@ -54,6 +54,7 @@ type AuthMessage struct {
 
 // 응답 메시지 구조체 정의
 type BalanceResult struct {
+	NodeId  string `json:"node_id"`
 	Address string `json:"address"`
 	Balance string `json:"balance"`
 }
@@ -68,12 +69,12 @@ type CollateralMessage struct {
 
 type BurnMessage struct {
 	Address string `json:"address"`
-	Stable  string `json:"stable"`
+	Coin    string `json:"coin"`
 }
 
 type BurnResultMessage struct {
 	Address     string                  `json:"address"`      // 소각 요청 계정
-	Stable      string                  `json:"stable"`       // 소각된 stable 양
+	Coin        string                  `json:"coin"`         // 소각된 stable 양
 	TxHash      string                  `json:"tx_hash"`      // 소각 트랜잭션 해시
 	RECRecords  []rewardtypes.RECRecord `json:"rec_records"`  // 반환된 RECRecord 목록
 	RECMetas    []RECMeta               `json:"rec_metas"`    // 반환된 RECMeta 목록

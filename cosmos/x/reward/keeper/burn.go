@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"fmt"
+	"strings"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/reward/types"
@@ -11,6 +12,10 @@ import (
 func (k Keeper) BurnStableCoin(ctx sdk.Context, target string, amount string) (*types.MsgBurnStableCoinResponse, error) {
 	var returnedRecords []*types.RECRecord
 	var returnedMetas []*types.RECMeta
+
+	if !strings.HasSuffix(amount, "aeil") {
+		amount = amount + "aeil"
+	}
 
 	coin, err := sdk.ParseCoinNormalized(amount)
 	if err != nil {

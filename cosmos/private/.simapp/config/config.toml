@@ -356,11 +356,11 @@ version = "v0"
 wal_file = "data/cs.wal/wal"
 
 # How long we wait for a proposal block before prevoting nil
-# timeout_propose = "3s"
+#timeout_propose = "3s"
 # How much timeout_propose increases with each round
 #timeout_propose_delta = "500ms"
 # How long we wait after receiving +2/3 prevotes for “anything” (ie. not a single block or nil)
-# timeout_prevote = "1s"
+#timeout_prevote = "1s"
 # How much the timeout_prevote increases with each round
 #timeout_prevote_delta = "500ms"
 # How long we wait after receiving +2/3 precommits for “anything” (ie. not a single block or nil)
@@ -370,24 +370,15 @@ wal_file = "data/cs.wal/wal"
 # How long we wait after committing a block, before starting on the new
 # height (this gives us a chance to receive some more precommits, even
 # though we already have +2/3).
-#timeout_commit = "5s"
+# timeout_commit = "5s"
 
-# 블록 제안 대기 시간 (기본 3s → 그대로 2s 정도로)
-timeout_propose = "2s"
-# 라운드 증가 시 추가 대기 (500ms → 300ms)
-timeout_propose_delta = "300ms"
-
-# Prevote 단계 대기 (1s → 600ms)
-timeout_prevote = "600ms"
-timeout_prevote_delta = "200ms"
-
-# Precommit 단계 대기 (1s → 600ms)
-timeout_precommit = "600ms"
+timeout_propose         = "1s"
+timeout_propose_delta   = "200ms"
+timeout_prevote         = "300ms"
+timeout_prevote_delta   = "200ms"
+timeout_precommit       = "300ms"
 timeout_precommit_delta = "200ms"
-
-# 블록 커밋 후 다음 블록 시작까지 대기 (5s → 1s)
-timeout_commit = "1s"
-
+timeout_commit          = "1s"
 
 # How many blocks to look back to check existence of the node's consensus votes before joining consensus
 # When non-zero, the node will panic upon restart

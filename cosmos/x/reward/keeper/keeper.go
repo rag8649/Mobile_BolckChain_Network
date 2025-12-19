@@ -55,20 +55,20 @@ func (k Keeper) RewardSolarPower(ctx sdk.Context, to string, amount string) erro
 	collateralValueStable := collateralAmt.Mul(sdk.NewInt(1000000))
 
 	if newTotal.GT(collateralValueStable) {
-		return fmt.Errorf("[RewardSolarPower] 발행량 초과: 담보 부족 (collateral=%s REC → %s mcnl, minted=%s, requested=%s)",
+		return fmt.Errorf("[RewardSolarPower] 발행량 초과: 담보 부족 (collateral=%s REC → %s aeil, minted=%s, requested=%s)",
 			collateralAmt.String(), collateralValueStable.String(), minted.String(), coinAmt.String())
 	}
 
 	// 4. stable 발행 및 전송
-	coinsTotal := sdk.NewCoins(sdk.NewCoin("mcnl", coinAmt))
+	coinsTotal := sdk.NewCoins(sdk.NewCoin("aeil", coinAmt))
 
 	// 수수료 10%
 	feeAmt := coinAmt.ToDec().Mul(sdk.NewDecWithPrec(1, 1)).TruncateInt() // coinAmt * 0.1
-	feeCoins := sdk.NewCoins(sdk.NewCoin("mcnl", feeAmt))
+	feeCoins := sdk.NewCoins(sdk.NewCoin("aeil", feeAmt))
 
 	// 사용자 금액
 	userAmt := coinAmt.Sub(feeAmt)
-	userCoins := sdk.NewCoins(sdk.NewCoin("mcnl", userAmt))
+	userCoins := sdk.NewCoins(sdk.NewCoin("aeil", userAmt))
 
 	toAddr, err := sdk.AccAddressFromBech32(to)
 	if err != nil {
